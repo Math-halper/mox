@@ -35,7 +35,13 @@ mox is built around those three, not around a clever prompt.
 
 ## Install (Linux Mint, Ubuntu, Debian, any Linux, macOS)
 
-One command, no root needed for mox itself:
+One command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Math-halper/mox/main/install.sh | bash
+```
+
+It installs entirely into `~/.local` — **no root, no PPA, no system packages replaced.** Want to read it first (recommended for anything you pipe into bash)? It is 400 lines of plain bash: [install.sh](install.sh). The equivalent with a checkout:
 
 ```bash
 git clone https://github.com/Math-halper/mox && cd mox && ./install.sh
@@ -52,12 +58,6 @@ The installer:
 
 Options: `--yes` (non-interactive), `--no-sandbox`, `--no-node`, `--with-ollama`, `--prefix DIR`, `--uninstall`, `--help`.
 
-Piped install (works once this lands on the default branch):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Math-halper/mox/main/install.sh | bash
-```
-
 Then open a **new terminal** so `PATH` updates, and:
 
 ```bash
@@ -72,7 +72,9 @@ mox "summarise what this repo does and list the riskiest files"
 - **Mint 22 / Ubuntu 24.04+: bubblewrap needs a sysctl.** The installer offers to write `/etc/sysctl.d/60-mox-userns.conf` to lift AppArmor's unprivileged-userns restriction. Without it, `bwrap` fails with "setting up uid map: Permission denied" and mox runs unsandboxed (policy approvals still apply). Remove the file and `sudo sysctl --system` to revert.
 - **Mint's repo Node is too old** (18.x or 20.x). Don't fight it; the installer handles it. If you prefer your own: `--no-node` plus any Node ≥ 22.18 from nvm, fnm, or NodeSource.
 - **No Flatpak/snap needed.** Everything lives in `~/.local`.
-- **Uninstall:** `./install.sh --uninstall` (or `~/.local/share/mox/../install.sh` won't exist — re-run the updater/checkout). Removes the launcher and app copy; leaves `~/.local/bin` on your PATH, plus any `.mox/` folders in your projects.
+- **Uninstall:** `mox --help` will not do it — run the installer again with the flag:
+  `curl -fsSL https://raw.githubusercontent.com/Math-halper/mox/main/install.sh | bash -s -- --uninstall`.
+  That removes the launcher and the app copy. It leaves your `~/.profile` PATH line, the system `bubblewrap` package, Ollama, and any `.mox/` folders in your projects.
 
 ### Requirements
 
