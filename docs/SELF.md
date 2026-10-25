@@ -99,6 +99,12 @@ mox self ask ./ada "what do you know about the battery order?"
 mox self ask ./ada "rename every screenshot in ~/Pictures to its date"
 ```
 
+## If you want a *trained* model that behaves like the folder
+
+The tiny model is proof the machinery works, not a path to competence. The realistic version of "my own model, trained on my own material, that can actually hold a conversation" is **fine-tuning a small open-weight model** (7–14B) on your folder with LoRA, then serving it with Ollama or llama.cpp. That is a different project — it needs a GPU with ~16–24 GB of VRAM or a rented one, a few hours, and a dataset much larger than a folder of notes (your writing corpus, ideally thousands of examples). The folder format here is already the right input shape: `corpusFor()` in `src/self.ts` gives you the text.
+
+Between this toy and a frontier model there is a real ladder: 10⁵ params (minutes, babble) → 10⁷–10⁹ params trained from scratch (days on a GPU, learns grammar but no facts) → 10⁹ params fine-tuned (LoRA, useful for narrow style/persona) → 10¹¹–10¹² params pretrained (millions of dollars, actual general capability). Everything mox does today sits on the last rung, borrowed from whatever model you point it at.
+
 ## Keeping it
 
 Put the folder in git. It is text:
