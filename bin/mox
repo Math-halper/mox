@@ -1,0 +1,5 @@
+#!/bin/sh
+# mox launcher. Runs the TypeScript sources directly (Node >= 22.18 strips types natively).
+set -e
+DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+exec node --disable-warning=ExperimentalWarning "$DIR/src/cli.ts" "$@"
