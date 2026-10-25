@@ -110,6 +110,8 @@ the header, and errors that tell you what to do (`ollama serve`, not a stack tra
 `mox app --demo` runs the same window with canned replies and no model — useful
 for screenshots or showing someone the product before they download 5 GB.
 
+**Fresh Mint install, step by step:** [docs/INSTALL-MINT.md](docs/INSTALL-MINT.md).
+
 ### Selling it
 
 ```bash
