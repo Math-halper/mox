@@ -33,28 +33,52 @@ regression test. Full suite is green.
 
 mox is built around those three, not around a clever prompt.
 
-## Quickstart
+## Install (Linux Mint, Ubuntu, Debian, any Linux, macOS)
+
+One command, no root needed for mox itself:
 
 ```bash
-# 1. Run a local model (pick one)
-ollama pull qwen3:8b && ollama serve        # http://127.0.0.1:11434/v1
-# or LM Studio -> start server                # http://127.0.0.1:1234/v1
-# or llama-server -m model.gguf --port 8080   # http://127.0.0.1:8080/v1
-
-# 2. Install mox
-git clone <this repo> && cd mox
-npm install
-npm link            # puts `mox` on your PATH
-
-# 3. Check the wiring
-mox doctor
-
-# 4. Use it
-mox "summarise what this repo does and list the riskiest files"
-mox chat
+git clone https://github.com/Math-halper/mox && cd mox && ./install.sh
 ```
 
-Requires **Node 22.18+** (it runs the TypeScript sources directly — no build step). `bwrap` on Linux gives kernel-level sandboxing: `apt install bubblewrap`.
+The installer:
+
+1. checks for **Node.js ≥ 22.18** and, if Mint's/Ubuntu's packaged Node is too old, downloads a private copy into `~/.local/share/mox/node` — your system Node is untouched, no PPA, no `sudo`;
+2. copies the app to `~/.local/share/mox/app` and writes `~/.local/bin/mox`;
+3. adds `~/.local/bin` to `PATH` in `~/.profile` (only that line, marked `# mox: user binaries`);
+4. installs **bubblewrap** for the sandbox and fixes the Ubuntu 24.04 / **Mint 22 AppArmor restriction** that silently breaks it;
+5. detects a running Ollama / LM Studio / llama.cpp server, or tells you the two commands to get one;
+6. runs `mox doctor` so you see exactly what works.
+
+Options: `--yes` (non-interactive), `--no-sandbox`, `--no-node`, `--with-ollama`, `--prefix DIR`, `--uninstall`, `--help`.
+
+Piped install (works once this lands on the default branch):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Math-halper/mox/main/install.sh | bash
+```
+
+Then open a **new terminal** so `PATH` updates, and:
+
+```bash
+ollama pull qwen3:8b        # only if the installer didn't find a running server
+ollama serve                # or: sudo systemctl start ollama
+mox doctor
+mox "summarise what this repo does and list the riskiest files"
+```
+
+### Linux Mint / Ubuntu notes
+
+- **Mint 22 / Ubuntu 24.04+: bubblewrap needs a sysctl.** The installer offers to write `/etc/sysctl.d/60-mox-userns.conf` to lift AppArmor's unprivileged-userns restriction. Without it, `bwrap` fails with "setting up uid map: Permission denied" and mox runs unsandboxed (policy approvals still apply). Remove the file and `sudo sysctl --system` to revert.
+- **Mint's repo Node is too old** (18.x or 20.x). Don't fight it; the installer handles it. If you prefer your own: `--no-node` plus any Node ≥ 22.18 from nvm, fnm, or NodeSource.
+- **No Flatpak/snap needed.** Everything lives in `~/.local`.
+- **Uninstall:** `./install.sh --uninstall` (or `~/.local/share/mox/../install.sh` won't exist — re-run the updater/checkout). Removes the launcher and app copy; leaves `~/.local/bin` on your PATH, plus any `.mox/` folders in your projects.
+
+### Requirements
+
+- Linux (x86_64 or arm64) or macOS, bash, curl or wget, `tar`, `xz-utils`
+- Node 22.18+ (handled automatically)
+- Optional: `bubblewrap` (sandbox), `playwright` (browser tool), Ollama / LM Studio / llama.cpp (the model)
 
 ## Commands
 
@@ -148,7 +172,10 @@ See [examples/mox.config.json](examples/mox.config.json). Env vars: `MOX_MODEL`,
 npm test          # 40 tests: policy, tools, agent loop, CLI end-to-end against a fake model server
 npm run typecheck
 npm run dev -- "your task"   # watch mode
+./install.sh --uninstall && ./install.sh   # reinstall after changing sources
 ```
+
+No `npm install` is needed to run mox itself — it has zero runtime dependencies. The dev dependencies (`typescript`, `@types/node`) are only for typechecking.
 
 The end-to-end tests spin up a real HTTP server that speaks the OpenAI schema, then run the actual CLI as a subprocess — no model weights needed.
 

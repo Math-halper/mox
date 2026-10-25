@@ -74,6 +74,26 @@ export function recoverInlineToolCalls(content: string): ToolCall[] {
   return calls;
 }
 
+/** Most people hit this on the first run, so say exactly what to do. */
+export function startHint(baseUrl: string): string {
+  let port = "";
+  try {
+    port = new URL(baseUrl).port;
+  } catch {
+    /* not a URL we can parse; fall through to the generic hint */
+  }
+  if (port === "11434" || baseUrl.includes("ollama")) {
+    return "Start Ollama:  `ollama serve`  (or `sudo systemctl start ollama`), then `ollama pull qwen3:8b` if it has no models.";
+  }
+  if (port === "1234") {
+    return "Start the LM Studio local server (Developer tab -> Start Server), and load a model first.";
+  }
+  if (port === "8080") {
+    return "Start llama.cpp:  `llama-server -m model.gguf --port 8080 -c 16384 --jinja`";
+  }
+  return "Start your model server, or point mox elsewhere with --base-url / MOX_BASE_URL.";
+}
+
 export type ModelInfo = {
   id: string;
   contextLength?: number;
@@ -134,8 +154,9 @@ export class OpenAIModel implements Model {
         }
         const code = error.cause?.code ?? "";
         throw new ModelError(
-          `cannot reach model server at ${this.base}${code ? ` (${code})` : ""}. ` +
-            `Is it running? Check with: mox doctor`,
+          `cannot reach model server at ${this.base}${code ? ` (${code})` : ""}.\n` +
+            startHint(this.base) +
+            `\nRun \`mox doctor\` to check the whole setup.`,
           true,
         );
       }
