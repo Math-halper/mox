@@ -20,6 +20,8 @@ if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
 fi
 CLEANUP_DIR=""
 SOURCE_URL_DEFAULT="https://api.github.com/repos/Math-halper/mox/tarball"
+# When a release sets this, the downloaded archive is verified against it.
+SUMFILE_URL_DEFAULT=""
 PREFIX="${MOX_PREFIX:-$HOME/.local}"
 APP_ROOT="$PREFIX/share/mox"
 APP_DIR="$APP_ROOT/app"
@@ -33,6 +35,8 @@ ASSUME_YES=0
 WITH_NODE=1
 WITH_SANDBOX=1
 WITH_OLLAMA=0
+WITH_SHORTCUT=1
+WITH_SELF=1
 UNINSTALL=0
 QUIET=0
 
@@ -99,6 +103,8 @@ Options:
   --prefix DIR       install under DIR (default: \$HOME/.local)
   --no-node          never download a private Node.js copy
   --no-sandbox       skip bubblewrap setup
+  --no-shortcut      do not add mox to the application menu
+  --no-self          do not create a starter assistant folder
   --with-ollama      install Ollama if no local model server is found
   --uninstall        remove the installed copy and launcher
   -q, --quiet        less output
@@ -125,6 +131,8 @@ parse_args() {
                 BIN_DIR="$PREFIX/bin"; LAUNCHER="$BIN_DIR/mox" ;;
       --no-node) WITH_NODE=0 ;;
       --no-sandbox) WITH_SANDBOX=0 ;;
+      --no-shortcut|--no-desktop) WITH_SHORTCUT=0 ;;
+      --no-self) WITH_SELF=0 ;;
       --with-ollama) WITH_OLLAMA=1 ;;
       --uninstall) UNINSTALL=1 ;;
       -q|--quiet) QUIET=1 ;;
@@ -238,6 +246,20 @@ resolve_source() {
     die "need curl or wget to download mox"
   fi
 
+  if [ -n "${SUMFILE_URL_DEFAULT:-}" ]; then
+    info "verifying checksum…"
+    local want got
+    want="$(fetch "$SUMFILE_URL_DEFAULT" | awk '{print $1}' | head -1)"
+    got="$(sha256sum "$tmp/mox.tar.gz" | awk '{print $1}')"
+    if [ -z "$want" ]; then
+      warn "no checksum published; continuing without verification"
+    elif [ "$want" != "$got" ]; then
+      die "checksum mismatch — refusing to install a corrupted or tampered download"
+    else
+      ok "checksum verified"
+    fi
+  fi
+
   mkdir -p "$tmp/src-tree"
   tar -xzf "$tmp/mox.tar.gz" -C "$tmp/src-tree" --strip-components=1 \
     || die "downloaded archive could not be unpacked"
@@ -324,6 +346,37 @@ setup_path() {
     ok "added $BIN_DIR to PATH in $profile"
   fi
   info "open a new terminal (or run: . \"$profile\") to use 'mox' everywhere"
+}
+
+# ------------------------------------------------------------------ app
+
+SELF_DIR="$HOME/mox-assistant"
+
+setup_app() {
+  step "Desktop app"
+  [ -x "$LAUNCHER" ] || { warn "no launcher; skipping the menu entry"; return 0; }
+
+  if [ "$WITH_SELF" = 1 ] && [ ! -f "$SELF_DIR/SELF.md" ]; then
+    info "creating a starter assistant in $SELF_DIR (edit it any time)"
+    if "$LAUNCHER" self init "$SELF_DIR" --name "Assistant" >/dev/null 2>&1; then
+      ok "assistant folder: $SELF_DIR"
+    else
+      warn "could not create $SELF_DIR — you can do it later with: mox self init $SELF_DIR"
+    fi
+  fi
+
+  if [ "$WITH_SHORTCUT" != 1 ]; then
+    info "skipped the menu entry (--no-shortcut)"
+    return 0
+  fi
+
+  local target="$SELF_DIR"
+  if [ ! -f "$target/SELF.md" ]; then target=""; fi
+  if MOX_EXEC="$LAUNCHER" "$LAUNCHER" app $target --install-shortcut >/dev/null 2>&1; then
+    ok "added \"mox\" to the application menu — click it, or run: mox app"
+  else
+    warn "could not add the menu entry; you can still run: mox app"
+  fi
 }
 
 # ------------------------------------------------------------------ sandbox
@@ -508,7 +561,8 @@ finish() {
     printf '    mox init                    %s# optional per-project config%s\n' "$C_DIM" "$C_RESET"
     printf '    mox doctor                  %s# check model, sandbox, tools%s\n' "$C_DIM" "$C_RESET"
     printf '    mox "explain this repo"     %s# first real task%s\n' "$C_DIM" "$C_RESET"
-    printf '    mox chat                    %s# interactive%s\n' "$C_DIM" "$C_RESET"
+    printf '    mox app                     %s# the window, from the menu too%s\n' "$C_DIM" "$C_RESET"
+    printf '    mox chat                    %s# terminal chat%s\n' "$C_DIM" "$C_RESET"
     printf '\n  %srun logs:%s <project>/.mox/runs   %sbrowse:%s mox runs\n' "$C_BOLD" "$C_RESET" "$C_BOLD" "$C_RESET"
   fi
   printf '\n'
@@ -542,6 +596,7 @@ main() {
   copy_app
   write_launcher
   setup_path
+  setup_app
   setup_sandbox
   setup_model
   finish

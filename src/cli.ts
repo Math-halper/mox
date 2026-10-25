@@ -1,12 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
+import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
-import type { AgentEvent, ChatMessage, Config, ToolProtocol } from "./types.ts";
+import type { AgentEvent, ChatMessage, Config, Model, ToolProtocol } from "./types.ts";
 import { ConfigError, DEFAULT_CONFIG, loadConfig, redactConfig, type CliOverrides } from "./config.ts";
-import { OpenAIModel, ModelError } from "./model.ts";
+import { OpenAIModel, ModelError, ScriptedModel, scriptedCall, scriptedText } from "./model.ts";
 import { Agent, type ApprovalRequest } from "./agent.ts";
 import { builtinTools, ToolError } from "./tools/index.ts";
 import { detectSandbox } from "./sandbox.ts";
@@ -28,6 +29,7 @@ import {
   SELF_FILES,
   type Self,
 } from "./self.ts";
+import { startAppServer, resolveAppTarget } from "./app/server.ts";
 import { TinyLM, type ModelJson } from "./tiny/lm.ts";
 import { lossVerdict, trainTiny } from "./tiny/train.ts";
 
@@ -64,6 +66,8 @@ ${bold("USAGE")}
   mox chat                      interactive session (keeps context)
   mox doctor                    check model server, sandbox, config
   mox init                      write a starter mox.config.json
+  mox app [dir]                 open the chat window (local, no Electron)
+  mox app --install-shortcut    add mox to your application menu
   mox self <cmd> [dir]          build and talk to an assistant defined by a folder
                                 (init, chat, ask, train, talk, info)
   mox tools                     list available tools
@@ -127,7 +131,8 @@ type Flags = {
     | "runs"
     | "show"
     | "config"
-    | "self";
+    | "self"
+    | "app";
   showTarget?: string;
   selfSub?: string;
   selfDir?: string;
@@ -138,6 +143,11 @@ type Flags = {
   temp?: number;
   tokens?: number;
   samplePrompt?: string;
+  port?: number;
+  installShortcut?: boolean;
+  open?: boolean;
+  host?: string;
+  demo?: boolean;
 };
 
 const VALUE_FLAGS: Record<string, keyof CliOverrides> = {
@@ -159,7 +169,7 @@ function parseArgs(argv: string[]): Flags {
     command: "run",
   };
 
-  const commands = new Set(["chat", "doctor", "init", "tools", "runs", "show", "config", "self"]);
+  const commands = new Set(["chat", "doctor", "init", "tools", "runs", "show", "config", "self", "app"]);
   let index = 0;
   if (argv[0] && commands.has(argv[0])) {
     flags.command = argv[0] as Flags["command"];
@@ -227,7 +237,18 @@ function parseArgs(argv: string[]): Flags {
     } else if (arg === "--prompt") {
       flags.samplePrompt = argv[++index];
       if (!flags.samplePrompt) throw new UsageError("--prompt needs a value");
-    } else if (arg === "--protocol") {
+    } else if (arg === "--port") {
+      const value = Number(argv[++index]);
+      if (!Number.isFinite(value) || value < 0 || value > 65535) throw new UsageError("--port needs a number 1-65535");
+      flags.port = Math.floor(value);
+    } else if (arg === "--install-shortcut") flags.installShortcut = true;
+    else if (arg === "--demo") flags.demo = true;
+    else if (arg === "--host") {
+      flags.host = argv[++index];
+      if (!flags.host) throw new UsageError("--host needs an address");
+    }
+    else if (arg === "--open") flags.open = true;
+    else if (arg === "--protocol") {
       const value = argv[++index] as ToolProtocol | undefined;
       if (!value || !["auto", "native", "text"].includes(value)) {
         throw new UsageError("--protocol must be auto, native or text");
@@ -370,12 +391,19 @@ async function buildAgent(
   flags: Flags,
   config: Config,
   cwd: string,
-  opts: { ask?: (question: string) => Promise<string>; persona?: string; memoryPath?: string } = {},
-): Promise<{ agent: Agent; model: OpenAIModel; tracer: Tracer; mcpClients: McpClient[] }> {
+  opts: {
+    ask?: (question: string) => Promise<string>;
+    persona?: string;
+    memoryPath?: string;
+    approve?: Approver;
+    onEvent?: (event: AgentEvent) => void;
+    modelOverride?: Model;
+  } = {},
+): Promise<{ agent: Agent; model: Model; tracer: Tracer; mcpClients: McpClient[] }> {
   if (opts.memoryPath) {
     config.memory = { enabled: true, path: opts.memoryPath };
   }
-  const model = new OpenAIModel(config);
+  const model = opts.modelOverride ?? new OpenAIModel(config);
   const tracer = new Tracer(config.trace.dir, config.trace.enabled, cwd);
 
   let tools = builtinTools(config);
@@ -389,14 +417,17 @@ async function buildAgent(
   }
 
   const interactive = Boolean(process.stdin.isTTY);
-  const approve = makeApprover({
-    interactive,
-    auto: config.policy.mode === "auto",
-    json: flags.json,
-    ask: opts.ask,
-  });
+  const approve =
+    opts.approve ??
+    makeApprover({
+      interactive,
+      auto: config.policy.mode === "auto",
+      json: flags.json,
+      ask: opts.ask,
+    });
 
   const render = renderer({ verbose: flags.verbose, json: flags.json });
+  const sink = opts.onEvent ? (event: AgentEvent) => { render.handle(event); opts.onEvent!(event); } : render.handle;
 
   const agent = new Agent({
     config,
@@ -406,7 +437,7 @@ async function buildAgent(
     sandbox: detectSandbox(),
     tracer,
     approve,
-    onEvent: render.handle,
+    onEvent: sink,
     persona: opts.persona,
   });
 
@@ -1115,6 +1146,239 @@ async function cmdSelf(flags: Flags): Promise<number> {
   }
 }
 
+
+// ---------------------------------------------------------------- app (a real window)
+
+const APP_LOG = () => path.join(process.env.HOME ?? ".", ".local/share/mox/app.log");
+
+function moxExecutable(): string {
+  const explicit = process.env["MOX_EXEC"];
+  if (explicit && explicit.trim()) return explicit.trim();
+  const candidates = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
+  for (const dir of candidates) {
+    const candidate = path.join(dir, "mox");
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch {
+      /* keep looking */
+    }
+  }
+  const cli = path.join(HERE, "cli.ts");
+  return `${process.execPath} --disable-warning=ExperimentalWarning ${cli}`;
+}
+
+/** Prefer a chromeless Chromium window, fall back to the default browser. */
+function openWindow(url: string): void {
+  if (process.env["MOX_NO_BROWSER"]) return;
+  const browsers = [
+    "chromium",
+    "chromium-browser",
+    "google-chrome",
+    "google-chrome-stable",
+    "brave-browser",
+    "microsoft-edge",
+  ];
+  const which = (bin: string): string | null => {
+    for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+      if (!dir) continue;
+      const candidate = path.join(dir, bin);
+      try {
+        fs.accessSync(candidate, fs.constants.X_OK);
+        return candidate;
+      } catch {
+        /* keep looking */
+      }
+    }
+    return null;
+  };
+
+  for (const browser of browsers) {
+    const bin = which(browser);
+    if (!bin) continue;
+    try {
+      const child = spawn(bin, [`--app=${url}`, "--window-size=1100,780", "--class=mox"], {
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+      return;
+    } catch {
+      /* try the next one */
+    }
+  }
+  const opener = process.platform === "darwin" ? "open" : "xdg-open";
+  try {
+    const child = spawn(opener, [url], { detached: true, stdio: "ignore" });
+    child.unref();
+  } catch {
+    /* the URL is printed anyway */
+  }
+}
+
+function installShortcut(flags: Flags): number {
+  const home = process.env.HOME ?? "";
+  const appsDir = path.join(home, ".local/share/applications");
+  const iconDir = path.join(home, ".local/share/icons/hicolor/scalable/apps");
+  const iconSrc = path.join(HERE, "app", "icon.svg");
+  const iconDest = path.join(iconDir, "mox.svg");
+  const explicitDir = flags.selfDir ?? flags.prompt[0];
+  const target = explicitDir ? path.resolve(process.cwd(), explicitDir) : null;
+
+  try {
+    fs.mkdirSync(appsDir, { recursive: true });
+    fs.mkdirSync(iconDir, { recursive: true });
+    if (fs.existsSync(iconSrc)) fs.copyFileSync(iconSrc, iconDest);
+  } catch (err) {
+    console.error(red(`could not write the menu entry: ${(err as Error).message}`));
+    return 1;
+  }
+
+  const exec = moxExecutable();
+  const args = ["app"];
+  if (target) args.push(`"${target}"`);
+  const entry = `[Desktop Entry]
+Type=Application
+Version=1.0
+Name=mox
+GenericName=AI Assistant
+Comment=Talk to your local AI assistant
+Exec=${exec} ${args.join(" ")}
+Icon=${iconDest}
+Terminal=false
+Categories=Utility;Development;Office;
+Keywords=ai;assistant;chat;llm;local;
+StartupNotify=true
+StartupWMClass=mox
+`;
+  const entryPath = path.join(appsDir, "mox.desktop");
+  fs.writeFileSync(entryPath, entry, "utf8");
+  try {
+    fs.chmodSync(entryPath, 0o755);
+  } catch {
+    /* not fatal */
+  }
+
+  for (const cmd of ["update-desktop-database", "gtk-update-icon-cache"]) {
+    try {
+      const dir = cmd === "gtk-update-icon-cache" ? iconDir : appsDir;
+      const child = spawn(cmd, [dir], { stdio: "ignore", detached: true });
+      child.on("error", () => undefined);
+      child.unref();
+    } catch {
+      /* optional tools, mint has them but do not depend on it */
+    }
+  }
+
+  console.log(`${green("✓")} added ${bold("mox")} to your application menu`);
+  console.log(dim(`  ${entryPath}`));
+  console.log(dim("  look under Menu → Accessories/Office, or search for \"mox\""));
+  return 0;
+}
+
+async function cmdApp(flags: Flags): Promise<number> {
+  if (flags.installShortcut) return installShortcut(flags);
+
+  const { config, cwd } = loadConfig(process.cwd(), flags.overrides);
+  const selfDir = resolveAppTarget(cwd, flags.selfDir);
+  let self = null;
+  if (selfDir) {
+    try {
+      self = loadSelf(selfDir);
+    } catch (err) {
+      console.error(red(`could not read the self folder: ${(err as Error).message}`));
+      return 1;
+    }
+  }
+  if (self && self.config.baseUrl && !flags.overrides.baseUrl) config.model.baseUrl = self.config.baseUrl;
+  if (self && self.config.model && !flags.overrides.model) config.model.name = self.config.model;
+  if (self && self.config.temperature !== undefined) config.model.temperature = self.config.temperature;
+
+  const shouldOpen = flags.open !== false && !flags.host;
+  const demo = Boolean(flags.demo);
+
+  if (flags.host && flags.host !== "127.0.0.1" && flags.host !== "localhost") {
+    console.error(yellow(`! listening on ${flags.host} — this window will be reachable from your network`));
+    console.error(dim("  the URL contains a secret token; do not leave this running on a shared network"));
+  }
+  if (demo) {
+    console.error(yellow("! demo mode: canned replies, no model, nothing is really executed"));
+  }
+
+  const demoModel = (): Model => {
+    if (!demo) return new OpenAIModel(config);
+    // A tiny scripted brain so the window can be shown (screenshots, a shop
+    // demo) without a 5 GB model download. It never touches a real file.
+    let turn = 0;
+    const folder = self ? path.relative(cwd, self.dir) || "." : ".";
+    return new ScriptedModel([
+      scriptedCall("list_dir", { path: folder, depth: 1 }, ""),
+      scriptedCall("recall", {}, ""),
+      scriptedText(
+        "This is demo mode, so I am showing you how I would work rather than doing it.\n\n" +
+          "In a real session I would read your folder, run the command you approved, and answer with the output. " +
+          "Start a local model with `ollama serve` and relaunch without --demo to talk to the real thing.",
+      ),
+      scriptedText("Demo complete."),
+    ]);
+    void turn;
+  };
+
+  let server: Awaited<ReturnType<typeof startAppServer>>;
+  try {
+    server = await startAppServer({
+      config,
+      cwd,
+      self,
+      port: flags.port ?? 0,
+      openBrowser: shouldOpen ? openWindow : undefined,
+      demo,
+      host: flags.host,
+      makeAgent: async ({ approve, onEvent }) => {
+        const built = await buildAgent(flags, config, cwd, {
+          approve,
+          onEvent,
+          persona: self ? personaBlock(self) : undefined,
+          memoryPath: self ? memoryPath(self) : undefined,
+          modelOverride: demo ? demoModel() : undefined,
+        });
+        return {
+          agent: built.agent,
+          close: async () => {
+            built.tracer.close();
+            for (const client of built.mcpClients) client.close();
+            await closeBrowser();
+          },
+        };
+      },
+      log: (message) => {
+        try {
+          fs.mkdirSync(path.dirname(APP_LOG()), { recursive: true });
+          fs.appendFileSync(APP_LOG(), `${new Date().toISOString()} ${message}\n`);
+        } catch {
+          /* logging must never break the app */
+        }
+      },
+    });
+  } catch (err) {
+    console.error(red(`could not start the app: ${(err as Error).message}`));
+    return 1;
+  }
+
+  console.log(`${bold(self?.config.name ?? "mox")} ${dim("is open in a window")}`);
+  console.log(dim(`  ${server.url.replace(/token=[^&]+/, "token=…")}`));
+  console.log(dim("  Ctrl-C to close."));
+
+  const shutdown = async () => {
+    await server.close();
+    process.exit(0);
+  };
+  process.on("SIGINT", () => void shutdown());
+  process.on("SIGTERM", () => void shutdown());
+  await new Promise<void>(() => undefined);
+  return 0;
+}
+
 // ---------------------------------------------------------------- main
 
 async function main(argv: string[]): Promise<number> {
@@ -1156,6 +1420,8 @@ async function main(argv: string[]): Promise<number> {
       return await cmdChat(flags);
     case "self":
       return await cmdSelf(flags);
+    case "app":
+      return await cmdApp(flags);
     default: {
       const task = flags.prompt.join(" ").trim();
       if (!task) {

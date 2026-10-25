@@ -89,6 +89,46 @@ mox "summarise what this repo does and list the riskiest files"
   `curl -fsSL https://raw.githubusercontent.com/Math-halper/mox/main/install.sh | bash -s -- --uninstall`.
   That removes the launcher and the app copy. It leaves your `~/.profile` PATH line, the system `bubblewrap` package, Ollama, and any `.mox/` folders in your projects.
 
+## The app (a window you click, not a terminal)
+
+```bash
+mox app                 # opens the chat window
+mox app ./ada           # ...with a specific assistant folder
+mox app --install-shortcut     # adds mox to the application menu
+```
+
+Installing already does the last one: **mox appears in the Mint menu**, with an
+icon, and opens a native-feeling window. It is a local web view — no Electron,
+no 100 MB runtime, no download. `mox app` starts a server bound to `127.0.0.1`
+with a per-launch random token and opens a chromeless Chromium window (or your
+default browser if Chromium isn't installed).
+
+In the window you get: streaming tool calls, **approval prompts** for anything
+that mutates (with the exact command shown), a Stop button, model and folder in
+the header, and errors that tell you what to do (`ollama serve`, not a stack trace).
+
+`mox app --demo` runs the same window with canned replies and no model — useful
+for screenshots or showing someone the product before they download 5 GB.
+
+### Selling it
+
+```bash
+./scripts/build-release.sh --base-url https://yourdomain.com/downloads
+```
+
+Produces `dist/mox-<version>.tar.gz`, a checksum, and an installer pointed at your
+download URL. Your customer runs one command:
+
+```bash
+curl -fsSL https://yourdomain.com/downloads/install.sh | bash
+```
+
+The installer verifies the checksum, installs to `~/.local`, creates
+`~/mox-assistant`, and adds the menu entry. The code is MIT — you may sell it.
+Read [docs/SHIP.md](docs/SHIP.md) (what buyers must supply, pricing, signing) and
+[LICENSING.md](LICENSING.md) (what MIT does and does not grant, and the
+open-weight-model trap) before you take money for it.
+
 ### Requirements
 
 - Linux (x86_64 or arm64) or macOS, bash, curl or wget, `tar`, `xz-utils`
@@ -108,6 +148,7 @@ mox "summarise what this repo does and list the riskiest files"
 | `mox show latest` | Replay a run's transcript: every call, argument, and result |
 | `mox config` | Print the resolved config (API key redacted) |
 | `mox self init/chat/ask/talk/train/info` | An assistant defined entirely by a folder |
+| `mox app` | The chat window; `--install-shortcut` adds it to the menu |
 
 Useful flags: `--yes` (auto-approve), `--readonly` (deny everything that writes), `--model`, `--base-url`, `--max-steps`, `--verbose`, `--json`, `--no-sandbox`, `--no-mcp`.
 
@@ -178,6 +219,7 @@ See [examples/mox.config.json](examples/mox.config.json). Env vars: `MOX_MODEL`,
 ## Docs
 
 - [docs/SELF.md](docs/SELF.md) — the editable folder, and what the from-scratch model really is
+- [docs/SHIP.md](docs/SHIP.md) — packaging, pricing, and what to disclose if you sell this
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the loop works, and how to add a tool
 - [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) — what this does and does not protect you from
 - [docs/MODELS.md](docs/MODELS.md) — which local model to run, and what to expect
@@ -186,7 +228,7 @@ See [examples/mox.config.json](examples/mox.config.json). Env vars: `MOX_MODEL`,
 ## Development
 
 ```bash
-npm test          # 40 tests: policy, tools, agent loop, CLI end-to-end against a fake model server
+npm test          # 64 tests: policy, tools, agent loop, self folder, tiny LM gradients, app server, CLI e2e
 npm run typecheck
 npm run dev -- "your task"   # watch mode
 ./install.sh --uninstall && ./install.sh   # reinstall after changing sources
