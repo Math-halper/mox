@@ -39,12 +39,29 @@ export type AgentOptions = {
   history?: ChatMessage[];
   /** Override the system prompt (tests). */
   systemPrompt?: string;
+  /** Identity block from a self folder, kept across prompt rebuilds. */
+  persona?: string;
 };
 
 export type RunOptions = {
   /** Reuse the conversation from a previous run (chat mode). */
   history?: ChatMessage[];
 };
+
+/**
+ * Keep a long conversation inside the model's context window without breaking
+ * it. Only cut at a user turn, so tool_call/tool pairs are never orphaned.
+ */
+export function trimHistory(messages: ChatMessage[], keep = 40): ChatMessage[] {
+  if (messages.length <= keep + 1) return messages;
+  const system = messages[0]?.role === "system" ? messages[0] : null;
+  const body = system ? messages.slice(1) : messages;
+  const target = Math.max(1, keep);
+  let cut = Math.max(0, body.length - target);
+  while (cut < body.length && body[cut]?.role !== "user") cut++;
+  if (cut >= body.length) return messages; // no safe boundary; leave it alone
+  return system ? [system, ...body.slice(cut)] : body.slice(cut);
+}
 
 function emptyUsage(): Usage {
   return { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
@@ -234,20 +251,29 @@ export class Agent {
         sandbox: this.opts.sandbox,
         memory,
         nativeTools: model.supportsNativeTools,
+        persona: this.opts.persona,
       });
 
     const history = runOpts.history ?? this.opts.history;
-    const messages: ChatMessage[] = history?.length
-      ? [...history]
-      : [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: task },
-        ];
-    if (history?.length) messages.push({ role: "user", content: task });
+    // History may come from disk (self chat) and therefore may not contain a
+    // system message. Always own the prompt: prepend one, and replace any
+    // stale one the caller had.
+    const messages: ChatMessage[] = [{ role: "system", content: systemPrompt }];
+    if (history?.length) {
+      messages.push(...(history[0]?.role === "system" ? history.slice(1) : history));
+    }
+    messages.push({ role: "user", content: task });
 
     if (history?.length) {
-      const first = messages[0];
-      if (first?.role === "system") messages[0] = { role: "system", content: systemPrompt };
+      const trimmed = trimHistory(messages, 40);
+      if (trimmed.length !== messages.length) {
+        messages.length = 0;
+        messages.push(...trimmed);
+        this.emit({
+          type: "notice",
+          message: `trimmed the oldest turns (${trimmed.length} messages kept) to stay inside the context window`,
+        });
+      }
     }
 
     tracer.write({ type: "task", task, model: model.name });
@@ -288,6 +314,7 @@ export class Agent {
             sandbox: this.opts.sandbox,
             memory,
             nativeTools: nativeFlag,
+            persona: this.opts.persona,
           }),
         };
         this.emit({

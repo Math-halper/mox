@@ -10,6 +10,8 @@ export function buildSystemPrompt(opts: {
   memory: string;
   nativeTools: boolean;
   platform?: NodeJS.Platform;
+  /** Identity block from a self folder. Replaces the default "You are mox" intro. */
+  persona?: string;
 }): string {
   const { config, cwd, toolNames, sandbox, memory, nativeTools } = opts;
   const platform = opts.platform ?? process.platform;
@@ -33,7 +35,14 @@ Your runtime does not support native function calls. To call a tool, emit ONE JS
 
 After the tool result arrives, continue. When the task is finished, reply with plain text and no <tool_call> block.`;
 
-  return `You are mox, a local AI agent running on the user's own computer. You complete tasks by calling tools, checking the result, and continuing until the job is done.
+  const intro = opts.persona
+    ? `${opts.persona}
+
+# Runtime
+You are running inside mox, a local agent on the user's own computer. The identity above is yours; everything below describes your environment and how to work. You complete tasks by calling tools, checking the result, and continuing until the job is done.`
+    : `You are mox, a local AI agent running on the user's own computer. You complete tasks by calling tools, checking the result, and continuing until the job is done.`;
+
+  return `${intro}
 
 # Environment
 - Platform: ${platform} (${process.arch})

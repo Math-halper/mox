@@ -23,6 +23,19 @@ mox (7 steps, 21.4s, 18,204 tokens)
 regression test. Full suite is green.
 ```
 
+## Make your own assistant (a folder, not a service)
+
+```bash
+mox self init ./ada --name Ada     # identity, knowledge, skills, memory — all plain files
+mox self chat ./ada                # talk to it: your local model, with tools
+mox self train ./ada               # train a small neural net on that folder, from scratch
+mox self talk ./ada                # talk to the from-scratch model
+```
+
+Everything the assistant is lives in `ada/` — `SELF.md` (who it talks like), `knowledge/*.md` (what it knows), `skills/` (how it works), `memory/` (what it remembers), `config.json`. Edit any of it and the next `mox self chat` picks it up. Put the folder in git if you want to diff your assistant's personality over time.
+
+Two brains, same folder: **`chat`** uses a real local model and mox's tools, so it can actually do things. **`talk`** uses a decoder-only transformer trained on your folder by hand-written backpropagation in `src/tiny/lm.ts` — zero dependencies, ~120k parameters, trained in a couple of minutes. That one is a real language model and it will babble; see [docs/SELF.md](docs/SELF.md) for an honest account of both.
+
 ## Why this exists
 
 "Can an AI agent do everything on my computer?" Mostly yes, and the hard part is not the loop — the loop is a few hundred lines. The hard parts are:
@@ -94,6 +107,7 @@ mox "summarise what this repo does and list the riskiest files"
 | `mox runs` | List past runs with step/call/error counts |
 | `mox show latest` | Replay a run's transcript: every call, argument, and result |
 | `mox config` | Print the resolved config (API key redacted) |
+| `mox self init/chat/ask/talk/train/info` | An assistant defined entirely by a folder |
 
 Useful flags: `--yes` (auto-approve), `--readonly` (deny everything that writes), `--model`, `--base-url`, `--max-steps`, `--verbose`, `--json`, `--no-sandbox`, `--no-mcp`.
 
@@ -163,6 +177,7 @@ See [examples/mox.config.json](examples/mox.config.json). Env vars: `MOX_MODEL`,
 
 ## Docs
 
+- [docs/SELF.md](docs/SELF.md) — the editable folder, and what the from-scratch model really is
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the loop works, and how to add a tool
 - [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) — what this does and does not protect you from
 - [docs/MODELS.md](docs/MODELS.md) — which local model to run, and what to expect

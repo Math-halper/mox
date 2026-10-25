@@ -13,7 +13,23 @@ import { detectSandbox } from "./sandbox.ts";
 import { Tracer, listRuns, readRun } from "./trace.ts";
 import { loadMcpTools, type McpClient } from "./mcp.ts";
 import { closeBrowser } from "./tools/browser.ts";
-import { formatMs, oneLine } from "./util.ts";
+import { formatBytes, formatMs, oneLine } from "./util.ts";
+import {
+  appendHistory,
+  clearHistory,
+  corpusFor,
+  initSelf,
+  loadHistory,
+  loadSelf,
+  memoryPath,
+  personaBlock,
+  summarizeSelf,
+  tinyPath,
+  SELF_FILES,
+  type Self,
+} from "./self.ts";
+import { TinyLM, type ModelJson } from "./tiny/lm.ts";
+import { lossVerdict, trainTiny } from "./tiny/train.ts";
 
 const require = createRequire(import.meta.url);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -48,6 +64,8 @@ ${bold("USAGE")}
   mox chat                      interactive session (keeps context)
   mox doctor                    check model server, sandbox, config
   mox init                      write a starter mox.config.json
+  mox self <cmd> [dir]          build and talk to an assistant defined by a folder
+                                (init, chat, ask, train, talk, info)
   mox tools                     list available tools
   mox runs                      list past runs
   mox show <run|latest>         replay a run's trace
@@ -62,6 +80,13 @@ ${bold("FLAGS")}
   --no-sandbox                  disable OS sandboxing (not recommended)
   --no-mcp                      do not start configured MCP servers
   --trace-dir <dir>             where run logs go (default .mox/runs)
+  --name <name>                 name for 'mox self init'
+  --steps <n>                   training steps for 'mox self train'
+  --size <nano|small|medium>    model size for 'mox self train'
+  --temp <n>                    sampling temperature for 'mox self talk'
+  --tokens <n>                  bytes to generate per reply
+  --prompt <text>               one-shot prompt for 'mox self talk'
+  --force                       write into a non-empty directory
   --verbose                     stream full tool output
   --json                        machine-readable events on stdout
   -h, --help                    this text
@@ -71,6 +96,13 @@ ${bold("EXAMPLES")}
   mox "find the flaky test and fix it"
   mox chat --model qwen3:8b
   mox "summarise README.md into 3 bullets" --yes
+
+  ${dim("# an assistant you own: a folder you can edit")}
+  mox self init ./ada --name Ada
+  mox self chat ./ada
+  mox self ask ./ada "what do you know about batteries?"
+  mox self train ./ada && mox self talk ./ada
+
   mox doctor
 
 ${dim("Config: mox.config.json in the project root (optional). Runs log to .mox/runs.")}
@@ -86,8 +118,26 @@ type Flags = {
   noMcp: boolean;
   prompt: string[];
   overrides: CliOverrides;
-  command: "run" | "chat" | "doctor" | "init" | "tools" | "runs" | "show" | "config";
+  command:
+    | "run"
+    | "chat"
+    | "doctor"
+    | "init"
+    | "tools"
+    | "runs"
+    | "show"
+    | "config"
+    | "self";
   showTarget?: string;
+  selfSub?: string;
+  selfDir?: string;
+  nameOpt?: string;
+  force?: boolean;
+  steps?: number;
+  sizeOpt?: string;
+  temp?: number;
+  tokens?: number;
+  samplePrompt?: string;
 };
 
 const VALUE_FLAGS: Record<string, keyof CliOverrides> = {
@@ -109,7 +159,7 @@ function parseArgs(argv: string[]): Flags {
     command: "run",
   };
 
-  const commands = new Set(["chat", "doctor", "init", "tools", "runs", "show", "config"]);
+  const commands = new Set(["chat", "doctor", "init", "tools", "runs", "show", "config", "self"]);
   let index = 0;
   if (argv[0] && commands.has(argv[0])) {
     flags.command = argv[0] as Flags["command"];
@@ -117,6 +167,20 @@ function parseArgs(argv: string[]): Flags {
     if (flags.command === "show" && argv[1] && !argv[1].startsWith("-")) {
       flags.showTarget = argv[1];
       index = 2;
+    }
+    if (flags.command === "self") {
+      const sub = argv[1];
+      if (!sub || sub.startsWith("-")) {
+        throw new UsageError(
+          "mox self needs a subcommand: init, chat, talk, train, info",
+        );
+      }
+      flags.selfSub = sub;
+      index = 2;
+      if (argv[2] && !argv[2].startsWith("-")) {
+        flags.selfDir = argv[2];
+        index = 3;
+      }
     }
   }
 
@@ -138,6 +202,31 @@ function parseArgs(argv: string[]): Flags {
       const value = Number(argv[++index]);
       if (!Number.isFinite(value) || value < 1) throw new UsageError("--max-steps needs a positive integer");
       flags.overrides.maxSteps = value;
+    } else if (arg === "--name") {
+      flags.nameOpt = argv[++index];
+      if (!flags.nameOpt) throw new UsageError("--name needs a value");
+    } else if (arg === "--force") flags.force = true;
+    else if (arg === "--steps") {
+      const value = Number(argv[++index]);
+      if (!Number.isFinite(value) || value < 1) throw new UsageError("--steps needs a positive integer");
+      flags.steps = Math.floor(value);
+    } else if (arg === "--size") {
+      const value = argv[++index];
+      if (!value || !["nano", "small", "medium"].includes(value)) {
+        throw new UsageError("--size must be nano, small or medium");
+      }
+      flags.sizeOpt = value;
+    } else if (arg === "--temp" || arg === "--temperature") {
+      const value = Number(argv[++index]);
+      if (!Number.isFinite(value) || value < 0) throw new UsageError("--temp needs a number >= 0");
+      flags.temp = value;
+    } else if (arg === "--tokens") {
+      const value = Number(argv[++index]);
+      if (!Number.isFinite(value) || value < 1) throw new UsageError("--tokens needs a positive integer");
+      flags.tokens = Math.floor(value);
+    } else if (arg === "--prompt") {
+      flags.samplePrompt = argv[++index];
+      if (!flags.samplePrompt) throw new UsageError("--prompt needs a value");
     } else if (arg === "--protocol") {
       const value = argv[++index] as ToolProtocol | undefined;
       if (!value || !["auto", "native", "text"].includes(value)) {
@@ -231,7 +320,10 @@ function renderer(opts: { verbose: boolean; json: boolean }) {
           if (opts.verbose) process.stderr.write(dim(`\n· step ${event.step}\n`));
           break;
         case "assistant":
-          process.stderr.write(`\n${event.text}\n`);
+          // The final answer is printed by the command itself; echoing it here
+          // would print it twice in a terminal. Intermediate narration (text
+          // emitted alongside tool calls) is shown only in verbose mode.
+          if (opts.verbose) process.stderr.write(dim(`\n${event.text}\n`));
           break;
         case "tool_start": {
           lastTool = event.name;
@@ -278,8 +370,11 @@ async function buildAgent(
   flags: Flags,
   config: Config,
   cwd: string,
-  ask?: (question: string) => Promise<string>,
+  opts: { ask?: (question: string) => Promise<string>; persona?: string; memoryPath?: string } = {},
 ): Promise<{ agent: Agent; model: OpenAIModel; tracer: Tracer; mcpClients: McpClient[] }> {
+  if (opts.memoryPath) {
+    config.memory = { enabled: true, path: opts.memoryPath };
+  }
   const model = new OpenAIModel(config);
   const tracer = new Tracer(config.trace.dir, config.trace.enabled, cwd);
 
@@ -298,7 +393,7 @@ async function buildAgent(
     interactive,
     auto: config.policy.mode === "auto",
     json: flags.json,
-    ask,
+    ask: opts.ask,
   });
 
   const render = renderer({ verbose: flags.verbose, json: flags.json });
@@ -312,6 +407,7 @@ async function buildAgent(
     tracer,
     approve,
     onEvent: render.handle,
+    persona: opts.persona,
   });
 
   return { agent, model, tracer, mcpClients };
@@ -376,7 +472,7 @@ async function cmdChat(flags: Flags): Promise<number> {
   const { config, cwd } = loadConfig(process.cwd(), flags.overrides);
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: blue("mox> ") });
   const ask = (question: string) => new Promise<string>((resolve) => rl.question(question, resolve));
-  const { agent, tracer, mcpClients, model } = await buildAgent(flags, config, cwd, ask);
+  const { agent, tracer, mcpClients, model } = await buildAgent(flags, config, cwd, { ask });
 
   console.log(`${bold("mox chat")} ${dim(`— model ${config.model.name || "auto"} at ${config.model.baseUrl}`)}`);
   console.log(dim("Type a task. /new clears context, /exit quits.\n"));
@@ -606,6 +702,419 @@ function cmdConfig(flags: Flags): number {
   return 0;
 }
 
+
+// ---------------------------------------------------------------- self (a folder is the AI)
+
+const SELF_HELP = `${bold("mox self")} — an assistant that is just a folder you can edit
+
+  mox self init <dir> [--name X]     create it
+  mox self chat <dir>                talk to it (your local model, with tools)
+  mox self ask <dir> "<task>"        one-shot task with that identity
+  mox self train <dir>               train a tiny model from the folder, from scratch
+  mox self talk <dir>                talk to that tiny model
+  mox self info <dir>                what is in the folder
+
+${dim("Everything it is lives in <dir>: SELF.md, knowledge/, skills/, memory/, config.json.")}`;
+
+function resolveSelfDir(flags: Flags): string {
+  const explicit = flags.selfDir;
+  if (explicit) return path.resolve(process.cwd(), explicit);
+  const here = path.join(process.cwd(), SELF_FILES.identity);
+  if (fs.existsSync(here)) return process.cwd();
+  return path.resolve(process.cwd(), "brain");
+}
+
+function describeSelfDir(self: Self): void {
+  const rel = (p: string) => path.relative(self.dir, p) || ".";
+  const size = (p: string) => {
+    try {
+      return formatBytes(fs.statSync(p).size);
+    } catch {
+      return "-";
+    }
+  };
+  console.log(`${bold(self.config.name)} ${dim(self.dir)}`);
+  console.log(`  ${bold(SELF_FILES.identity.padEnd(18))} ${size(path.join(self.dir, SELF_FILES.identity))}  ${dim("identity")}`);
+  for (const entry of self.knowledge) {
+    const p = path.join(self.dir, SELF_FILES.knowledgeDir, entry.file);
+    console.log(`  ${("knowledge/" + entry.file).padEnd(18)} ${size(p)}  ${dim("knowledge")}`);
+  }
+  for (const entry of self.skills) {
+    const p = path.join(self.dir, SELF_FILES.skillsDir, entry.file);
+    console.log(`  ${("skills/" + entry.file).padEnd(18)} ${size(p)}  ${dim("procedure")}`);
+  }
+  console.log(`  ${SELF_FILES.notes.padEnd(18)} ${size(path.join(self.dir, SELF_FILES.notes))}  ${dim("memory")}`);
+  if (self.hasTiny) {
+    console.log(`  ${SELF_FILES.tiny.padEnd(18)} ${size(tinyPath(self))}  ${dim("from-scratch model")}`);
+  } else {
+    console.log(`  ${SELF_FILES.tiny.padEnd(18)} ${dim("not trained yet (mox self train .)")}`);
+  }
+  void rel;
+}
+
+function cmdSelfInit(flags: Flags): number {
+  const dir = resolveSelfDir(flags);
+  try {
+    const result = initSelf(dir, { name: flags.nameOpt, force: flags.force });
+    console.log(`\n${green("created")} ${bold(result.dir)}`);
+    for (const file of result.created) console.log(`  ${dim("+")} ${file}`);
+    console.log(`\n${bold("next")}`);
+    console.log(`  edit ${path.join(result.dir, SELF_FILES.identity)}`);
+    console.log(`  ${dim("then:")} mox self chat ${path.relative(process.cwd(), result.dir) || "."}`);
+    console.log(`  ${dim("offline, from scratch:")} mox self train ${path.relative(process.cwd(), result.dir) || "."}`);
+    console.log("");
+    return 0;
+  } catch (err) {
+    console.error(red((err as Error).message));
+    return 1;
+  }
+}
+
+function cmdSelfInfo(flags: Flags): number {
+  let self: Self;
+  try {
+    self = loadSelf(resolveSelfDir(flags));
+  } catch (err) {
+    console.error(red((err as Error).message));
+    return 1;
+  }
+  const summary = summarizeSelf(self);
+  console.log("");
+  describeSelfDir(self);
+  console.log("");
+  console.log(
+    `  identity ${summary.identityChars} chars · knowledge ${summary.knowledgeFiles} file(s), ${summary.knowledgeChars} chars · memory ${summary.memoryChars} chars · history ${summary.historyEntries} line(s)`,
+  );
+  if (summary.tiny) {
+    console.log(
+      `  tiny model: ${summary.tiny.steps} steps, loss ${Number(summary.tiny.loss).toFixed(3)} (${lossVerdict(Number(summary.tiny.loss))})`,
+    );
+  }
+  const corpusChars = corpusFor(self).length;
+  console.log(`  training corpus: ${formatBytes(corpusChars)} of text`);
+  console.log(
+    `\n  ${dim("talk with the real model:")} mox self chat ${path.relative(process.cwd(), self.dir) || "."}`,
+  );
+  console.log(
+    `  ${dim("talk with the tiny model:")} mox self talk ${path.relative(process.cwd(), self.dir) || "."}\n`,
+  );
+  return 0;
+}
+
+type SelfAgent = {
+  agent: Agent;
+  tracer: Tracer;
+  mcpClients: McpClient[];
+  config: Config;
+};
+
+async function prepareSelfAgent(
+  flags: Flags,
+  self: Self,
+  ask?: (question: string) => Promise<string>,
+): Promise<SelfAgent> {
+  const { config, cwd } = loadConfig(process.cwd(), flags.overrides);
+  // The folder's config wins over project defaults, but CLI flags win over both.
+  if (!flags.overrides.baseUrl && self.config.baseUrl) config.model.baseUrl = self.config.baseUrl;
+  if (!flags.overrides.model && self.config.model) config.model.name = self.config.model;
+  if (self.config.temperature !== undefined && flags.temp === undefined) {
+    config.model.temperature = self.config.temperature;
+  }
+  if (self.config.maxTokens) config.model.maxTokens = self.config.maxTokens;
+
+  const built = await buildAgent(flags, config, cwd, {
+    ask,
+    persona: personaBlock(self),
+    memoryPath: memoryPath(self),
+  });
+  return { ...built, config };
+}
+
+async function cmdSelfAsk(flags: Flags): Promise<number> {
+  let self: Self;
+  try {
+    self = loadSelf(resolveSelfDir(flags));
+  } catch (err) {
+    console.error(red((err as Error).message));
+    return 1;
+  }
+  const task = flags.prompt.join(" ").trim();
+  if (!task) {
+    console.error(red("what should it do?"));
+    console.error(dim(`example: mox self ask ${path.relative(process.cwd(), self.dir) || "."} "what do you know about batteries?"`));
+    return 2;
+  }
+  const { agent, tracer, mcpClients } = await prepareSelfAgent(flags, self);
+  try {
+    appendHistory(self, "user", task);
+    const result = await agent.run(task);
+    appendHistory(self, "assistant", result.text);
+    process.stdout.write(result.text + "\n");
+    return 0;
+  } finally {
+    tracer.close();
+    for (const client of mcpClients) client.close();
+    await closeBrowser();
+  }
+}
+
+async function cmdSelfChat(flags: Flags): Promise<number> {
+  let self: Self;
+  try {
+    self = loadSelf(resolveSelfDir(flags));
+  } catch (err) {
+    console.error(red((err as Error).message));
+    return 1;
+  }
+  if (!process.stdin.isTTY) {
+    console.error(red("mox self chat needs a terminal. Use --prompt with 'mox self ask' instead."));
+    return 2;
+  }
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: blue(`${self.config.name}> `) });
+  const ask = (question: string) => new Promise<string>((resolve) => rl.question(question, resolve));
+
+  const { agent, tracer, mcpClients, config } = await prepareSelfAgent(flags, self, ask);
+
+  let history = loadHistory(self, 20);
+  console.log(`${bold(self.config.name)} ${dim(`— ${self.dir}`)}`);
+  console.log(
+    dim(
+      `identity ${self.identity.length} chars · ${self.knowledge.length} knowledge file(s) · tools on · model ${config.model.name || "auto"}`,
+    ),
+  );
+  console.log(dim(`/new forgets the conversation · /info shows the folder · /exit quits\n`));
+
+  rl.prompt();
+  for await (const line of rl) {
+    const input = String(line).trim();
+    if (!input) {
+      rl.prompt();
+      continue;
+    }
+    if (input === "/exit" || input === "/quit") break;
+    if (input === "/new") {
+      clearHistory(self);
+      history = [];
+      console.log(dim("conversation forgotten (old log kept as .bak)"));
+      rl.prompt();
+      continue;
+    }
+    if (input === "/info") {
+      describeSelfDir(self);
+      rl.prompt();
+      continue;
+    }
+
+    const controller = new AbortController();
+    const onSigint = () => controller.abort();
+    process.on("SIGINT", onSigint);
+    try {
+      appendHistory(self, "user", input);
+      const result = await agent.run(input, { history });
+      history = result.messages;
+      appendHistory(self, "assistant", result.text);
+      console.log(`\n${result.text}\n`);
+    } catch (err) {
+      console.error(red(`error: ${(err as Error).message}`));
+    } finally {
+      process.off("SIGINT", onSigint);
+    }
+    rl.prompt();
+  }
+
+  rl.close();
+  tracer.close();
+  for (const client of mcpClients) client.close();
+  await closeBrowser();
+  return 0;
+}
+
+function cmdSelfTrain(flags: Flags): number {
+  let self: Self;
+  try {
+    self = loadSelf(resolveSelfDir(flags));
+  } catch (err) {
+    console.error(red((err as Error).message));
+    return 1;
+  }
+  const corpus = corpusFor(self);
+  if (corpus.trim().length < 400) {
+    console.error(red("not enough text in the folder to learn from yet"));
+    console.error(dim("write a few paragraphs in SELF.md or knowledge/, then train again"));
+    return 1;
+  }
+
+  const steps = flags.steps ?? 500;
+  console.log(
+    `${bold("training")} ${dim(`${formatBytes(corpus.length)} of text, ${flags.sizeOpt ?? "small"} model, ${steps} steps, from scratch`)}`,
+  );
+
+  let lastPrint = 0;
+  const started = Date.now();
+  let result;
+  try {
+    result = trainTiny({
+      text: corpus,
+      size: (flags.sizeOpt as "nano" | "small" | "medium" | undefined) ?? "small",
+      steps,
+      seed: 1337,
+      onStep: ({ step, loss, lr }) => {
+        const pct = Math.floor((step / steps) * 100);
+        if (pct >= lastPrint + 10 || step === steps) {
+          lastPrint = Math.floor(pct / 10) * 10;
+          process.stderr.write(
+            `  ${dim(`${String(step).padStart(4)}/${steps}`)} ${dim(`${pct}%`.padStart(4))}  loss ${loss.toFixed(3)}  lr ${lr.toFixed(5)}  ${dim(formatMs(Date.now() - started))}\n`,
+          );
+        }
+      },
+    });
+  } catch (err) {
+    console.error(red((err as Error).message));
+    return 1;
+  }
+
+  const target = tinyPath(self);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  const json = result.model.toJSON({
+    steps: result.steps,
+    loss: result.finalLoss,
+    bytes: result.bytes,
+  });
+  fs.writeFileSync(target, JSON.stringify(json), "utf8");
+
+  console.log("");
+  console.log(`${green("trained")} ${bold(`${(result.model.parameterCount / 1000).toFixed(1)}k parameters`)} in ${formatMs(result.ms)}`);
+  console.log(`  loss ${result.initialLoss.toFixed(3)} → ${result.finalLoss.toFixed(3)}  ${dim(lossVerdict(result.finalLoss))}`);
+  console.log(`  saved ${formatBytes(fs.statSync(target).size)} to ${target}`);
+  console.log(`\n${bold("sample")} ${dim("(this is the whole mind, warts and all)")}`);
+  console.log(dim(result.sample.replace(/\s+/g, " ").slice(0, 500)));
+  console.log(`\n  ${dim("talk to it:")} mox self talk ${path.relative(process.cwd(), self.dir) || "."}\n`);
+  return 0;
+}
+
+function cmdSelfTalk(flags: Flags): number {
+  let self: Self;
+  try {
+    self = loadSelf(resolveSelfDir(flags));
+  } catch (err) {
+    console.error(red((err as Error).message));
+    return 1;
+  }
+  const file = tinyPath(self);
+  if (!fs.existsSync(file)) {
+    console.error(red(`${self.config.name} has no tiny model yet`));
+    console.error(dim(`train one with: mox self train ${path.relative(process.cwd(), self.dir) || "."}`));
+    return 1;
+  }
+
+  let model: TinyLM;
+  let json: ModelJson;
+  try {
+    json = JSON.parse(fs.readFileSync(file, "utf8")) as ModelJson;
+    model = TinyLM.fromJSON(json);
+  } catch (err) {
+    console.error(red(`could not load ${file}: ${(err as Error).message}`));
+    return 1;
+  }
+
+  const name = self.config.name;
+  const stats = model.stats;
+  console.log(`${bold(name)} ${dim("(tiny model, built from this folder)")}`);
+  console.log(
+    dim(
+      `${(model.parameterCount / 1000).toFixed(1)}k parameters · ${stats.steps} steps · loss ${Number(stats.loss).toFixed(3)}`,
+    ),
+  );
+  console.log(
+    dim(
+      "This is a real neural network trained from scratch, not a chatbot. It continues text in",
+    ),
+  );
+  console.log(dim("the style of your folder; it does not reason, and it is not the assistant from"));
+  console.log(dim("`mox self chat`. It is a window into what a model learns from your writing.\n"));
+
+  const temperature = flags.temp ?? 0.8;
+  const maxTokens = flags.tokens ?? 120;
+  const seedPrefix = `${self.identity.slice(0, 280)}\n\n`;
+
+  const reply = (input: string): string => {
+    const seed = `${seedPrefix}User: ${input}\n${name}:`;
+    const bytes = model.generate(new TextEncoder().encode(seed), {
+      maxTokens,
+      temperature,
+      topK: 40,
+      seed: Date.now() % 100000,
+    });
+    let text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+    text = text.replace(/\u0000/g, "");
+    // The model does not know it is in a dialogue; stop it when it invents the
+    // next turn, rather than letting it answer itself for 200 bytes.
+    const stop = text.search(new RegExp(`\\n(User|You|${name})\\s*:`));
+    if (stop > 10) text = text.slice(0, stop);
+    return text.replace(/\s+/g, " ").trim() || "(silence)";
+  };
+
+  if (flags.samplePrompt) {
+    console.log(`${blue("you>")} ${flags.samplePrompt}`);
+    console.log(`${magenta(name + ">")} ${reply(flags.samplePrompt)}\n`);
+    return 0;
+  }
+  if (!process.stdin.isTTY) {
+    console.error(red("mox self talk needs a terminal, or use --prompt \"…\""));
+    return 2;
+  }
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: blue("you> ") });
+  rl.prompt();
+  rl.on("line", (line) => {
+    const input = String(line).trim();
+    if (!input) {
+      rl.prompt();
+      return;
+    }
+    if (input === "/exit" || input === "/quit") {
+      rl.close();
+      return;
+    }
+    const started = Date.now();
+    const answer = reply(input);
+    console.log(`${magenta(name + ">")} ${answer}`);
+    console.log(dim(`  ${formatMs(Date.now() - started)}\n`));
+    rl.prompt();
+  });
+  rl.on("close", () => {
+    console.log(dim("\nbye"));
+  });
+  return 0;
+}
+
+async function cmdSelf(flags: Flags): Promise<number> {
+  const sub = flags.selfSub ?? "";
+  switch (sub) {
+    case "init":
+      return cmdSelfInit(flags);
+    case "info":
+      return cmdSelfInfo(flags);
+    case "train":
+      return cmdSelfTrain(flags);
+    case "talk":
+      return cmdSelfTalk(flags);
+    case "chat":
+      return await cmdSelfChat(flags);
+    case "ask":
+      return await cmdSelfAsk(flags);
+    case "help":
+    case "--help":
+      console.log(SELF_HELP);
+      return 0;
+    default:
+      console.error(red(`unknown self subcommand "${sub}"`));
+      console.log(SELF_HELP);
+      return 2;
+  }
+}
+
 // ---------------------------------------------------------------- main
 
 async function main(argv: string[]): Promise<number> {
@@ -645,6 +1154,8 @@ async function main(argv: string[]): Promise<number> {
       return cmdConfig(flags);
     case "chat":
       return await cmdChat(flags);
+    case "self":
+      return await cmdSelf(flags);
     default: {
       const task = flags.prompt.join(" ").trim();
       if (!task) {

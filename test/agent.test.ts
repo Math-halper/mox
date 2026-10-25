@@ -7,6 +7,7 @@ import path from "node:path";
 import { DEFAULT_CONFIG } from "../src/config.ts";
 import { Agent } from "../src/agent.ts";
 import { ScriptedModel, scriptedCall, scriptedText } from "../src/model.ts";
+import { trimHistory } from "../src/agent.ts";
 import { Tracer } from "../src/trace.ts";
 import type { AgentEvent, Config } from "../src/types.ts";
 import type { ToolDef } from "../src/tools/types.ts";
@@ -168,6 +169,64 @@ test("the step limit stops runaway runs and asks for a summary", async () => {
   assert.match(result.text, /step limit/);
   const last = model.requests.at(-1)!;
   assert.match(String(last.messages.at(-1)?.content), /Step limit reached/);
+});
+
+test("history without a system message still gets the persona prompt", async () => {
+  const { agent, model } = setup({ steps: [scriptedText("ok")] });
+  await agent.run("second question", {
+    history: [
+      { role: "user", content: "first question" },
+      { role: "assistant", content: "first answer" },
+    ],
+  });
+  const sent = model.requests[0]!.messages;
+  assert.equal(sent[0]?.role, "system");
+  assert.ok(String(sent[0] && "content" in sent[0] ? sent[0].content : "").includes("test system prompt"));
+  assert.equal(sent.filter((m) => m.role === "system").length, 1);
+  const lastUser = sent.filter((m) => m.role === "user").at(-1);
+  assert.equal(
+    lastUser && "content" in lastUser ? lastUser.content : "",
+    "second question",
+  );
+});
+
+test("trimHistory only cuts at user turns and keeps the system prompt", () => {
+  const messages = [
+    { role: "system" as const, content: "sys" },
+    { role: "user" as const, content: "old question" },
+    { role: "assistant" as const, content: "old answer" },
+    { role: "user" as const, content: "newer question" },
+    {
+      role: "assistant" as const,
+      content: null,
+      tool_calls: [{ id: "1", type: "function" as const, function: { name: "echo", arguments: "{}" } }],
+    },
+    { role: "tool" as const, tool_call_id: "1", content: "result" },
+    { role: "user" as const, content: "latest" },
+  ];
+  const trimmed = trimHistory(messages, 3);
+  assert.equal(trimmed[0]?.role, "system");
+  assert.equal(trimmed[1]?.role, "user");
+  assert.equal(trimmed[1] && "content" in trimmed[1] ? trimmed[1].content : "", "latest");
+  // Never start on an orphaned tool result.
+  for (const message of trimmed.slice(1)) {
+    if (message.role === "tool") {
+      assert.fail("trimmed history must not start with a tool result");
+    }
+  }
+});
+
+test("a long chat history is trimmed before it is sent to the model", async () => {
+  const { agent, model } = setup({ steps: [scriptedText("ok")] });
+  const history: Array<{ role: "user" | "assistant"; content: string }> = [];
+  for (let i = 0; i < 60; i++) {
+    history.push({ role: "user", content: `q${i}` });
+    history.push({ role: "assistant", content: `a${i}` });
+  }
+  await agent.run("next", { history: history as never });
+  const sent = model.requests[0]!.messages;
+  assert.ok(sent.length <= 43, `history should be trimmed, got ${sent.length} messages`);
+  assert.equal(sent[0]?.role, "system");
 });
 
 test("destructive commands never reach the approver", async () => {
