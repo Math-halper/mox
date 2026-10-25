@@ -1,0 +1,30 @@
+{
+  "name": "mox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A local-first AI agent that runs on your machine. Tier 1: files, shell, code, HTTP, MCP.",
+  "license": "MIT",
+  "bin": {
+    "mox": "./bin/mox"
+  },
+  "files": [
+    "bin",
+    "src",
+    "docs"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/cli.ts",
+    "dev": "node --watch --disable-warning=ExperimentalWarning src/cli.ts",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "doctor": "node --disable-warning=ExperimentalWarning src/cli.ts doctor"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}
