@@ -192,6 +192,13 @@ function parseArgs(argv: string[]): Flags {
         index = 3;
       }
     }
+    if (flags.command === "app") {
+      // `mox app ./ada` — the desktop entry passes the folder this way.
+      if (argv[1] && !argv[1].startsWith("-")) {
+        flags.selfDir = argv[1];
+        index = 2;
+      }
+    }
   }
 
   for (; index < argv.length; index++) {
@@ -1281,6 +1288,10 @@ async function cmdApp(flags: Flags): Promise<number> {
 
   const { config, cwd } = loadConfig(process.cwd(), flags.overrides);
   const selfDir = resolveAppTarget(cwd, flags.selfDir);
+  if (flags.selfDir && !selfDir) {
+    console.error(red(`not an assistant folder: ${flags.selfDir} (no SELF.md)`));
+    return 1;
+  }
   let self = null;
   if (selfDir) {
     try {

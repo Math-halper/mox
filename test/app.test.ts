@@ -9,7 +9,8 @@ import { DEFAULT_CONFIG } from "../src/config.ts";
 import { Agent } from "../src/agent.ts";
 import { ScriptedModel, scriptedCall, scriptedText } from "../src/model.ts";
 import { Tracer } from "../src/trace.ts";
-import { startAppServer } from "../src/app/server.ts";
+import { startAppServer, resolveAppTarget } from "../src/app/server.ts";
+import { initSelf, loadSelf, personaBlock } from "../src/self.ts";
 import type { ToolDef } from "../src/tools/types.ts";
 
 function workspace(): string {
@@ -18,7 +19,10 @@ function workspace(): string {
 
 type Harness = Awaited<ReturnType<typeof boot>>;
 
-async function boot(opts: { steps: ConstructorParameters<typeof ScriptedModel>[0] }) {
+async function boot(opts: {
+  steps: ConstructorParameters<typeof ScriptedModel>[0];
+  selfDir?: string;
+}) {
   const cwd = workspace();
   const config = structuredClone(DEFAULT_CONFIG);
   config.trace.enabled = false;
@@ -46,12 +50,17 @@ async function boot(opts: { steps: ConstructorParameters<typeof ScriptedModel>[0
     },
   };
 
+  const prompts: string[] = [];
   const server = await startAppServer({
     config,
     cwd,
-    self: null,
+    self: opts.selfDir ? loadSelf(opts.selfDir) : null,
     port: 0,
     makeAgent: async ({ approve, onEvent }) => {
+      // Mirrors cmdApp: the folder is re-read for every message.
+      const live = opts.selfDir ? loadSelf(opts.selfDir) : null;
+      const persona = live ? personaBlock(live) : "test";
+      prompts.push(persona);
       const agent = new Agent({
         config,
         model: new ScriptedModel(opts.steps),
@@ -61,12 +70,12 @@ async function boot(opts: { steps: ConstructorParameters<typeof ScriptedModel>[0
         tracer: new Tracer(path.join(cwd, ".mox/runs"), false, cwd),
         approve,
         onEvent,
-        systemPrompt: "test",
+        systemPrompt: persona,
       });
       return { agent, close: async () => undefined };
     },
   });
-  return { server, ran, cwd, token: server.token, url: server.url };
+  return { server, ran, cwd, prompts, token: server.token, url: server.url };
 }
 
 function apiUrl(harness: Harness, route: string): string {
@@ -288,6 +297,47 @@ test("a second message while a run is in flight is rejected", async () => {
     const prompt = log.events.find((event) => event["type"] === "approval_request")!;
     await post(harness, "/api/approve", { id: prompt["id"], allow: false });
     await waitFor(log, "answer");
+  } finally {
+    await log.stop();
+    await harness.server.close();
+  }
+});
+
+test("resolveAppTarget honours an explicit folder (what the menu entry passes)", () => {
+  const cwd = workspace();
+  const brain = path.join(cwd, "ada");
+  initSelf(brain, { name: "Ada" });
+
+  assert.equal(resolveAppTarget(cwd, "./ada"), brain);
+  assert.equal(resolveAppTarget(cwd, brain), brain);
+  // With no argument it finds ./brain or the cwd.
+  assert.equal(resolveAppTarget(brain), brain);
+  // A folder that is not a self must not be treated as one.
+  const empty = workspace();
+  assert.equal(resolveAppTarget(empty, empty), null);
+});
+
+test("editing SELF.md takes effect on the next message, without a restart", async () => {
+  const cwd = workspace();
+  const brain = path.join(cwd, "ada");
+  initSelf(brain, { name: "Ada" });
+  fs.writeFileSync(path.join(brain, "SELF.md"), "# Ada\n\nYou speak in haiku.\n");
+
+  const harness = await boot({ steps: [scriptedText("ok")], selfDir: brain });
+  const log = startReader(harness);
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    await post(harness, "/api/message", { text: "one" });
+    await waitFor(log, "answer");
+
+    fs.writeFileSync(path.join(brain, "SELF.md"), "# Ada\n\nYou only answer in riddles.\n");
+    await post(harness, "/api/message", { text: "two" });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    assert.equal(harness.prompts.length, 2);
+    assert.match(harness.prompts[0]!, /haiku/);
+    assert.match(harness.prompts[1]!, /riddles/);
+    assert.ok(!harness.prompts[1]!.includes("haiku"), "the old identity must be gone");
   } finally {
     await log.stop();
     await harness.server.close();

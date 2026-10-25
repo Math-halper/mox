@@ -416,7 +416,12 @@ export async function startAppServer(opts: AppServerOptions): Promise<AppServer>
 
 /** Pick a sensible default folder: a self next to you, else none. */
 export function resolveAppTarget(cwd: string, explicit?: string): string | null {
-  if (explicit) return path.resolve(cwd, explicit);
+  if (explicit) {
+    // An explicit folder must really be a self; silently falling back to "no
+    // folder" is how the menu entry ended up ignoring its argument.
+    const resolved = path.resolve(cwd, explicit);
+    return fs.existsSync(path.join(resolved, "SELF.md")) ? resolved : null;
+  }
   const candidates = [path.join(cwd, "brain"), cwd];
   for (const candidate of candidates) {
     if (fs.existsSync(path.join(candidate, "SELF.md"))) return candidate;
