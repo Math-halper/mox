@@ -101,6 +101,27 @@ for (const [question, expected] of [
 check('retrieval: stemming (fraction/fractions)',
   window.__mox.retrieve('denominator')[0]?.doc.id === window.__mox.retrieve('denominators')[0]?.doc.id);
 
+// A weak match is worse than no match: it makes the model cite nonsense.
+for (const question of ['hello', 'hi there', 'thanks', 'what can you do?', 'what is 2+2?', 'tell me a joke']) {
+  check(`retrieval: no invented sources for "${question}"`, window.__mox.retrieve(question).length === 0);
+}
+check('retrieval: keeps real matches', window.__mox.retrieve('what is photosynthesis?').length > 0);
+
+/* ---------------------------------------------------------------- prompts */
+const grounded = window.__mox.buildMessages('What is a fraction?',
+  [{ text: 'A fraction names part of a whole.', doc: { name: 'Arithmetic', categoryLabel: 'Mathematics', bundled: true } }]);
+const groundedSystem = grounded[0].content;
+check('prompt: passes passages when they exist', groundedSystem.includes('[1] Mathematics › Arithmetic'));
+check('prompt: tells the model not to claim missing sources', /Never say you have "no sources"/.test(groundedSystem));
+check('prompt: allows answering beyond the passages', /do not refuse/.test(groundedSystem));
+check('prompt: no refusal placeholder when grounded', !groundedSystem.includes('no library passage matched this question'));
+
+const bare = window.__mox.buildMessages('What is the capital of France?', []);
+const bareSystem = bare[0].content;
+check('prompt: ungrounded answers from general knowledge', /own general knowledge/.test(bareSystem));
+check('prompt: ungrounded forbids citing sources', /do not mention sources/.test(bareSystem));
+check('prompt: marks the empty source block', bareSystem.includes('no library passage matched this question'));
+
 /* ---------------------------------------------------------------- ask */
 $('#messageInput').value = 'What is a fraction?';
 $('#messageInput').dispatchEvent(new window.Event('input', { bubbles: true }));

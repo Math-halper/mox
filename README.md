@@ -113,8 +113,19 @@ You can also import your own documents at runtime with **Add a folder** / **Add 
 (stored in the browser's IndexedDB, never uploaded).
 
 Retrieval is lexical: each document is split into ~800-character passages, scored with an
-IDF-weighted term score plus title and exact-phrase bonuses, and the best passages are
-inserted into the prompt as sources. Answers cite the documents used.
+IDF-weighted term score, a coverage bonus for answering the whole question, suffix
+stemming (so "fraction" finds "fractions"), and title/phrase bonuses that only apply to
+distinctive terms. A relevance floor drops weak matches — a bad passage is worse than
+none, because it makes the model cite nonsense.
+
+Answers then take one of two paths:
+
+- **Grounded** — passages matched: they go into the prompt, the answer cites them as `[1]`,
+  and the reply may add general knowledge rather than refusing.
+- **General** — nothing matched: the model answers from its own knowledge and a line
+  under the answer says so ("Answered from the model — no library passage matched").
+  It is never told to claim it has no sources, which used to make it refuse plain
+  questions like "what is 2+2?".
 
 ## What you get in the UI
 

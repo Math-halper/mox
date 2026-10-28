@@ -565,3 +565,8 @@ button { font-family: inherit; color: inherit; }
 .message.user .msg-action:hover { background: #000000; color: #ffffff; border-color: #000000; }
 .message.user .msg-action.done { border-color: #000000; }
 .message.user .msg-stats { color: #333333; }
+
+/* Honest state when the library had nothing for this question. */
+.sources-cited.no-match {
+  border-top-style: dashed; font-style: italic; color: var(--dim);
+}

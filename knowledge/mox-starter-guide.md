@@ -51,6 +51,12 @@ Use **Add a folder** or **Add files** to import notes, PDFs, or exported documen
 
 To add a document to the built-in library so it loads automatically, drop it into `knowledge/` and run `python3 tools/build_knowledge_index.py`.
 
+## When Mox has sources, and when it doesn't
+
+If your question matches something in the library, Mox puts those passages in front of the model, cites them as [1], [2], and links them under the answer so you can read the exact text. If nothing matches — a greeting, simple arithmetic, something outside the 28 documents — Mox answers from the model's own knowledge and says so in one line under the reply. It should never claim it has "no sources" or refuse a question just because the library is silent.
+
+When the library does match but only partly, the answer uses the passages and then fills in. Treat it as a fast study aid, not an authority: check anything that matters against the cited document or another source.
+
 ## Honest limits
 
 A 135M model can be fluent and still wrong. The retrieved passages are the source of truth for factual questions; the model's own knowledge is thin. When the model cannot start, Mox switches to search-only mode and shows the matching passages directly instead of guessing.

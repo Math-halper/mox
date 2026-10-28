@@ -29,7 +29,10 @@ const STOP_WORDS = new Set(
    'your he she they them his her their not no nor so than too very please tell explain describe give show define mean ' +
    'meaning some any more most other such only own same s t just between work works working used use using need needs ' +
    'want wants get gets make makes made thing things example examples question questions answer answers best better ' +
-   'good way ways also like many much amount around instead').split(' ')
+   'good way ways also like many much amount around instead simple words word ' +
+   'hi hello hey thanks thank ok okay sure yeah yep nope hmm lol please kindly anyone ' +
+   'something anything everything understand understood tell me us there here ' +
+   'someone somebody anybody everyone thing things').split(' ')
 );
 
 const $ = (selector) => document.querySelector(selector);
@@ -401,18 +404,22 @@ function retrieve(query, limit = MAX_EXCERPTS) {
   if (!chunks.length) return [];
 
   const documentFrequency = new Map();
+  const informativeness = new Map();   // idf per term: how much a match is worth
   for (const term of terms) {
     const key = stem(term);
     let count = 0;
     for (const chunk of chunks) if (chunk.frequencies.has(term) || chunk.stems.has(key)) count++;
     documentFrequency.set(term, count);
+    informativeness.set(term, Math.log(1 + chunks.length / (1 + count)));
   }
 
   const phrase = query.toLowerCase().replace(/\s+/g, ' ').trim();
+  const total = terms.reduce((sum, term) => sum + informativeness.get(term), 0) || 1;
   const scored = [];
   for (const chunk of chunks) {
     let score = 0;
     let matched = 0;
+    let coverage = 0;                  // idf of the terms this chunk covers
     for (const term of terms) {
       const frequency = Math.max(
         chunk.frequencies.get(term) || 0,
@@ -420,34 +427,51 @@ function retrieve(query, limit = MAX_EXCERPTS) {
       );
       if (!frequency) continue;
       matched++;
-      const idf = Math.log(1 + chunks.length / (1 + (documentFrequency.get(term) || 0)));
+      const idf = informativeness.get(term);
+      coverage += idf;
       score += (1 + Math.log(frequency)) * (0.35 + idf);
     }
     if (!score) continue;
-    // Reward covering more of the question, not just one lucky keyword.
-    score += matched * matched * 0.55;
+    // Reward covering the informative parts of the question, not just one word.
+    score += 0.7 * coverage;
     const title = `${chunk.doc.name} ${chunk.doc.path || ''} ${chunk.doc.categoryLabel || ''}`.toLowerCase();
     let titleMatch = false;
     for (const term of terms) {
+      // A term that shows up in half the library says nothing about this chunk.
+      const distinctive = (documentFrequency.get(term) || 0) / chunks.length < 0.3;
+      if (!distinctive) continue;
       if (title.includes(term) || title.includes(stem(term))) { score += 1.6; titleMatch = true; }
     }
     // Only multi-word phrases get the phrase bonus: for a single word it would
     // just double-count the term and make "fraction"/"fractions" rank differently.
     const phraseMatch = phrase.includes(' ') && chunk.text.toLowerCase().includes(phrase);
     if (phraseMatch) score += 3.5;
-    scored.push({ ...chunk, score, matched, titleMatch, phraseMatch });
+    scored.push({ ...chunk, score, matched, coverage: coverage / total, titleMatch, phraseMatch });
   }
   scored.sort((a, b) => b.score - a.score);
   if (!scored.length) return [];
 
+  // A weak match is worse than no match: it makes the model cite an irrelevant
+  // passage. Require real evidence before anything is offered as a source.
+  const needed = Math.min(2, terms.length);
+  const evidence = (item) => item.phraseMatch
+    || item.titleMatch
+    || item.matched >= needed
+    || item.coverage >= 0.34;
+  // One common word ("name", "there") matches something in any 18,000-word
+  // library. A single-word question only counts if that word is distinctive.
+  if (terms.length === 1 && (documentFrequency.get(terms[0]) || 0) / chunks.length >= 0.22) return [];
+  const best = scored[0];
+  if (!evidence(best)) return [];
+  const floor = Math.max(2.4, best.score * 0.34);
+  scored.forEach((item) => { item.strong = evidence(item); });
+
   const distinctive = terms.filter((term) => (documentFrequency.get(term) || 0) / chunks.length < 0.45);
-  const best = scored[0].score;
+  const bestScore = scored[0].score;
   const usable = scored.filter((item) => {
-    if (item.score < best * 0.3) return false;
+    if (item.score < floor) return false;
     if (distinctive.length && !distinctive.some((term) => item.frequencies.has(term) || item.stems.has(stem(term)))) return false;
-    const needed = Math.min(2, terms.length);
-    const strong = item.matched >= needed || item.titleMatch || item.phraseMatch;
-    return strong || item.score >= best * 0.62;
+    return item.strong || (item.titleMatch || item.phraseMatch) || item.score >= bestScore * 0.62;
   });
 
   const selected = [];
@@ -459,7 +483,7 @@ function retrieve(query, limit = MAX_EXCERPTS) {
     selected.push(item);
     perSource.set(item.doc.id, (perSource.get(item.doc.id) || 0) + 1);
   }
-  return selected.length ? selected : scored.slice(0, 1);
+  return selected.length ? selected : (best.strong ? [best] : []);
 }
 
 /* ------------------------------------------------------------------ models */
@@ -648,22 +672,33 @@ async function startModel({ auto = false } = {}) {
 }
 
 function buildMessages(question, excerpts) {
-  const sources = excerpts.length
+  const grounded = excerpts.length > 0;
+  const sources = grounded
     ? excerpts.map((item, index) =>
         `[${index + 1}] ${item.doc.bundled ? `${item.doc.categoryLabel} › ${item.doc.name}` : item.doc.name}\n${item.text.slice(0, EXCERPT_CHARS).trim()}`
       ).join('\n\n')
-    : 'No matching passages were found in the knowledge library or your files.';
+    : '(no library passage matched this question)';
 
-  const system = [
-    'You are Mox, a careful assistant running privately in the user\'s browser.',
-    'Answer only from the SOURCES below, and cite the ones you use like [1] or [2].',
-    'If the sources do not answer the question, say "I could not find that in the library." and name what would help.',
-    'Be direct and specific: no preamble, no restating the question, no filler.',
-    'Plain text, at most 120 words. Use short lists only when the question asks for steps or options.',
-    '',
-    'SOURCES:',
-    sources
-  ].join('\n');
+  const rules = grounded
+    ? [
+        'You are Mox, a careful assistant running privately in the user\'s browser.',
+        'The numbered passages after SOURCES are reference material, not the whole world.',
+        'If they answer the question, ground your reply in them and cite like [1].',
+        'If they only partly help, use them, then add what you know — do not refuse.',
+        'Never say you have "no sources" when passages are listed below.',
+        'Be direct and specific: no preamble, no restating the question, no filler.',
+        'Plain text, at most 120 words. Use a short list only for steps or options.'
+      ]
+    : [
+        'You are Mox, a helpful assistant running privately in the user\'s browser.',
+        'No library passage matched this question, so answer from your own general knowledge.',
+        'Answer the question directly and briefly; do not mention sources, passages or a library.',
+        'If you genuinely do not know, say so in one short sentence.',
+        'Be direct and specific: no preamble, no restating the question, no filler.',
+        'Plain text, at most 120 words. Use a short list only for steps or options.'
+      ];
+
+  const system = [...rules, '', 'SOURCES:', sources].join('\n');
 
   const messages = [{ role: 'system', content: system }];
   for (const turn of history.slice(-HISTORY_TURNS)) messages.push(turn);
@@ -797,6 +832,15 @@ function copyText(value) {
   area.select();
   try { document.execCommand?.('copy'); } finally { area.remove(); }
   return Promise.resolve();
+}
+
+// When nothing in the library matched, say so once under the answer instead of
+// letting the model apologise for "missing sources".
+function noSourcesNote() {
+  const note = document.createElement('div');
+  note.className = 'sources-cited no-match';
+  note.textContent = 'Answered from the model — no library passage matched this question.';
+  return note;
 }
 
 function attachActions(body, record) {
@@ -1168,6 +1212,7 @@ function paintAnswer(record, body, text, excerpts, started) {
   record.stats = `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)}s · ${Math.round(tokens / seconds)} tok/s`;
   body.innerHTML = renderRich(text);
   if (excerpts?.length) body.append(citationPills(excerpts, record));
+  else body.append(noSourcesNote());
   attachActions(body, record);
 
   const chat = activeChat();
@@ -1657,7 +1702,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:' && !location.s
 
 // Exposed for debugging in the browser console and for automated smoke tests.
 window.__mox = {
-  retrieve, allKnowledge, renderRich, makeChunks, openModal, resetChat,
+  retrieve, allKnowledge, renderRich, makeChunks, openModal, resetChat, buildMessages,
   openConversation, deleteChat, openPassage, saveChats, restoreChats, closeDrawer, openDrawer,
   conversations, get activeChatId() { return activeChatId; },
   state: () => ({
