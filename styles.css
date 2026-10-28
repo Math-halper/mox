@@ -559,3 +559,9 @@ button { font-family: inherit; color: inherit; }
 .md-rule { border: 0; border-top: 1px solid #ffffff40; margin: 16px 0; }
 .md-list { margin: 8px 0; padding-left: 22px; }
 .md-list li { margin: 3px 0; }
+
+/* Actions sit inside the white question bubble, so they invert there. */
+.message.user .msg-action { color: #000000; }
+.message.user .msg-action:hover { background: #000000; color: #ffffff; border-color: #000000; }
+.message.user .msg-action.done { border-color: #000000; }
+.message.user .msg-stats { color: #333333; }
