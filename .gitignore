@@ -1,0 +1,11 @@
+__pycache__/
+.DS_Store
+
+# The bundled model is committed so the site works out of the box:
+#   models/smollm2-135m-instruct-q4_1.gguf  (94 MB, Apache-2.0)
+# Extra models downloaded with tools/fetch_model.py are large binaries and stay
+# out of git. Keep them on the machine that serves the site.
+models/*.gguf
+!models/smollm2-135m-instruct-q4_1.gguf
+models/*.part
+models/*.gguf.part
