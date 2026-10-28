@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "generated": "2026-10-28T12:05:43Z",
+  "generated": "2026-10-28T21:08:22Z",
   "categories": [
     {
       "id": "math",
@@ -169,8 +169,8 @@
       "path": "mox-starter-guide.md",
       "title": "About this workspace",
       "category": "",
-      "bytes": 5142,
-      "words": 830
+      "bytes": 7243,
+      "words": 1173
     },
     {
       "path": "reading/grammar-and-punctuation.md",
@@ -264,6 +264,20 @@
       "words": 675
     },
     {
+      "path": "technology/apis-http-and-json.md",
+      "title": "APIs, HTTP, and JSON \u2014 how programs talk to each other",
+      "category": "technology",
+      "bytes": 7317,
+      "words": 1091
+    },
+    {
+      "path": "technology/css-reference.md",
+      "title": "CSS reference \u2014 selectors, every property group, and layout",
+      "category": "technology",
+      "bytes": 19833,
+      "words": 2788
+    },
+    {
       "path": "technology/cybersecurity-and-privacy.md",
       "title": "Cybersecurity and privacy",
       "category": "technology",
@@ -285,11 +299,25 @@
       "words": 700
     },
     {
+      "path": "technology/html-reference.md",
+      "title": "HTML reference \u2014 every element, attribute, and pattern",
+      "category": "technology",
+      "bytes": 16163,
+      "words": 2217
+    },
+    {
       "path": "technology/internet-and-web.md",
       "title": "The internet and the web",
       "category": "technology",
       "bytes": 3908,
       "words": 594
+    },
+    {
+      "path": "technology/javascript-reference.md",
+      "title": "JavaScript reference \u2014 language, DOM, APIs, and patterns",
+      "category": "technology",
+      "bytes": 26891,
+      "words": 3415
     },
     {
       "path": "technology/programming-fundamentals.md",

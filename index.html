@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#000000">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="Mox is a private AI workspace that runs a bundled language model in your browser and answers from the knowledge built into this site.">
+  <meta name="description" content="Mox is a private AI workspace: a bundled language model runs in your browser, with a code workspace, a calculator, and a built-in knowledge library.">
   <title>Mox — your private AI workspace</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -27,6 +27,16 @@
       <button class="side-row" id="libraryButton" title="Browse the knowledge library">
         <span class="side-icon" aria-hidden="true">⌕</span>
         <span class="side-text">Search the library</span>
+      </button>
+      <button class="side-row" id="workspaceButton" title="Open the code workspace">
+        <span class="side-icon" aria-hidden="true">⟨⟩</span>
+        <span class="side-text">Workspace</span>
+        <span class="side-badge" id="workspaceCount">3 files</span>
+      </button>
+      <button class="side-row" id="calculatorButton" title="Open the calculator">
+        <span class="side-icon" aria-hidden="true">∑</span>
+        <span class="side-text">Calculator</span>
+        <kbd>⌘J</kbd>
       </button>
 
       <div class="side-group">
@@ -83,6 +93,10 @@
           <span class="model-menu-chevron" aria-hidden="true">⌄</span>
         </button>
         <div class="topbar-right">
+          <button class="topbar-action" id="workspaceTop" title="Code workspace (⌘⇧E)"><span aria-hidden="true">⟨⟩</span> Workspace</button>
+          <button class="topbar-action icon-only" id="calcTop" title="Calculator (⌘J)" aria-label="Calculator">∑</button>
+          <button class="mobile-icon" id="mobileWorkspace" title="Workspace" aria-label="Workspace">⟨⟩</button>
+          <button class="mobile-icon" id="mobileCalc" title="Calculator" aria-label="Calculator">∑</button>
           <button class="mobile-icon" id="mobileLibrary" title="Knowledge library" aria-label="Knowledge library">⌕</button>
           <button class="mobile-icon" id="mobileSettings" title="Model &amp; settings" aria-label="Model and settings">⚙</button>
           <span class="source-badge" id="sourceBadge" title="Where the model comes from">◈ loading engine…</span>
@@ -110,7 +124,11 @@
                 <div class="progress-track"><div id="progressBar" class="progress-fill"></div></div>
                 <div class="progress-meta"><span id="progressLabel">Preparing model…</span><span id="progressPercent">0%</span></div>
               </div>
-              <button class="load-model-button" id="loadModel">Start the model</button>
+              <div class="model-card-actions">
+                <button class="load-model-button" id="loadModel">Start the model</button>
+                <button class="model-change-button" id="modelChoose">Choose a model</button>
+                <button class="model-change-button" id="modelCardUpload">Upload a .gguf</button>
+              </div>
               <div class="model-footnote" id="modelFootnote">Runs on llama.cpp / WebAssembly · offline after the first load</div>
             </div>
           </div>
@@ -136,6 +154,8 @@
             <button class="quick-card" id="quickAsk"><span class="quick-icon" aria-hidden="true">✳</span><strong>Ask anything</strong></button>
             <button class="quick-card" id="quickFolder"><span class="quick-icon" aria-hidden="true">＋</span><strong>Add your files</strong></button>
             <button class="quick-card" id="quickPrivacy"><span class="quick-icon" aria-hidden="true">⌑</span><strong>How privacy works</strong></button>
+            <button class="quick-card" id="quickWorkspace"><span class="quick-icon" aria-hidden="true">⟨⟩</span><strong>Make something</strong></button>
+            <button class="quick-card" id="quickCalculator"><span class="quick-icon" aria-hidden="true">∑</span><strong>Calculate</strong></button>
           </div>
         </div>
 
@@ -147,6 +167,148 @@
   <input id="filePicker" type="file" multiple hidden accept=".txt,.md,.markdown,.csv,.json,.html,.htm,.xml,.yaml,.yml,.log,.pdf">
   <input id="folderPicker" type="file" multiple webkitdirectory directory hidden>
   <input id="modelPicker" type="file" accept=".gguf" hidden>
+  <input id="wsFilePicker" type="file" multiple accept=".html,.htm,.css,.js,.mjs,.json,.svg,.md,.txt" hidden>
+
+
+  <!-- Code workspace: files, editor, live preview, console, and AI edits. -->
+  <section class="workspace-panel" id="workspacePanel" aria-label="Code workspace" hidden>
+    <header class="ws-head">
+      <div class="ws-head-left">
+        <span class="ws-mark" aria-hidden="true">⟨⟩</span>
+        <div>
+          <h2>Workspace</h2>
+          <span class="ws-sub">HTML, CSS and JavaScript · previewed live, saved in this browser</span>
+        </div>
+      </div>
+      <div class="ws-head-actions">
+        <label class="ws-auto" title="Let Mox write workspace files from chat answers">
+          <input type="checkbox" id="wsAutoApply" checked>
+          <span>Mox may edit files</span>
+        </label>
+        <button type="button" class="ws-button" id="wsUndo" title="Undo the last change">Undo</button>
+        <button type="button" class="ws-button" id="wsImport" title="Add files from this computer">Import</button>
+        <button type="button" class="ws-button" id="wsExport" title="Download this file">Export</button>
+        <button type="button" class="ws-close" id="wsClose" aria-label="Close workspace">×</button>
+      </div>
+    </header>
+
+    <div class="ws-body">
+      <aside class="ws-files" aria-label="Workspace files">
+        <div class="ws-files-head">
+          <span>Files</span>
+          <button type="button" class="ws-icon-button" id="wsNewFile" title="New file" aria-label="New file">＋</button>
+        </div>
+        <div class="ws-file-list" id="wsFileList"></div>
+        <button type="button" class="ws-add" id="wsNewFile2">＋ New file</button>
+      </aside>
+
+      <section class="ws-editor-pane" aria-label="Editor">
+        <div class="ws-tabs" id="wsTabs"></div>
+        <div class="ws-editor-wrap">
+          <div class="ws-gutter" id="wsGutter" aria-hidden="true"></div>
+          <textarea id="wsEditor" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Code editor"></textarea>
+        </div>
+        <div class="ws-editor-foot">
+          <span id="wsStatus">ready</span>
+          <span class="ws-foot-keys"><kbd>⌘S</kbd> save · <kbd>⌘↵</kbd> refresh preview · <kbd>Tab</kbd> indent</span>
+          <button type="button" class="ws-save" id="wsSave">Save</button>
+        </div>
+      </section>
+
+      <section class="ws-side" aria-label="Preview and assistant">
+        <div class="ws-preview-head">
+          <span>Preview</span>
+          <div class="ws-preview-tools">
+            <button type="button" class="ws-device active" data-device="desktop" title="Desktop width">▭</button>
+            <button type="button" class="ws-device" data-device="tablet" title="Tablet width">▯</button>
+            <button type="button" class="ws-device" data-device="phone" title="Phone width">▯</button>
+            <button type="button" class="ws-tool" id="wsRefresh" title="Reload preview">↻</button>
+            <button type="button" class="ws-tool" id="wsConsoleToggle" title="Show console">▤</button>
+            <button type="button" class="ws-tool" id="wsPopout" title="Open preview in a new tab">↗</button>
+          </div>
+        </div>
+        <div class="ws-preview-shell" data-device="desktop">
+          <iframe id="wsPreview" title="Live preview" sandbox="allow-scripts allow-forms allow-modals allow-popups"></iframe>
+        </div>
+        <div class="ws-console" id="wsConsole" role="log" aria-label="Console"></div>
+
+        <div class="ws-ai">
+          <div class="ws-ai-head">
+            <span>Ask Mox to change this</span>
+            <button type="button" class="ws-tool" id="wsAiClear" title="Clear the conversation">Clear</button>
+          </div>
+          <div class="ws-ai-log" id="wsAiLog">
+            <div class="ws-ai-msg mox">Describe a change and I will write the files. Try “add a dark mode toggle” or “make the card responsive”.</div>
+          </div>
+          <div class="ws-ai-chips">
+            <button type="button" data-ws-prompt="Add a dark mode toggle that remembers the choice">Dark mode toggle</button>
+            <button type="button" data-ws-prompt="Make the layout responsive on phones">Responsive layout</button>
+            <button type="button" data-ws-prompt="Add a form with validation and a success message">Add a form</button>
+            <button type="button" data-ws-prompt="Explain what the current files do, line by line">Explain the code</button>
+          </div>
+          <div class="ws-ai-summary" id="wsAiSummary" hidden></div>
+          <form class="ws-ai-form" id="wsAiForm">
+            <textarea id="wsAiPrompt" rows="2" placeholder="e.g. add a header and three cards with CSS grid" aria-label="Ask Mox to edit the workspace"></textarea>
+            <button type="submit" class="ws-ai-send" id="wsAiSend">Ask</button>
+          </form>
+          <div class="ws-ai-actions" id="wsAiActions" hidden>
+            <button type="button" class="ws-ai-apply" id="wsAiApply">Apply changes</button>
+            <button type="button" class="ws-ai-discard" id="wsAiDiscard">Discard</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <!-- Calculator: full expression engine, history, functions, unit conversion. -->
+  <section class="calc-panel" id="calculatorPanel" aria-label="Calculator" hidden>
+    <header class="calc-head">
+      <div class="ws-head-left">
+        <span class="ws-mark" aria-hidden="true">∑</span>
+        <div>
+          <h2>Calculator</h2>
+          <span class="ws-sub">Exact expressions, every math function, unit conversion — on this device</span>
+        </div>
+      </div>
+      <button type="button" class="ws-close" id="calcClose" aria-label="Close calculator">×</button>
+    </header>
+    <div class="calc-body">
+      <div class="calc-main">
+        <label class="calc-display">
+          <span class="calc-display-label">Expression</span>
+          <input id="calcExpression" class="calc-input" type="text" inputmode="text" spellcheck="false"
+                 placeholder="2 + 2, sqrt(16), 20% of 150, convert(10, km, mi)" aria-label="Expression" autocomplete="off">
+          <output id="calcResult" class="calc-result" aria-live="polite"></output>
+        </label>
+        <div class="calc-keys" id="calcKeys"></div>
+        <div class="calc-history-wrap">
+          <div class="calc-section-head">
+            <span>History</span>
+            <button type="button" class="ws-tool" id="calcClearHistory">Clear</button>
+          </div>
+          <div class="calc-history" id="calcHistory"></div>
+        </div>
+      </div>
+      <aside class="calc-side">
+        <div class="calc-section-head"><span>Functions</span><span class="calc-hint">click to insert</span></div>
+        <div class="calc-functions" id="calcFunctions"></div>
+        <div class="calc-section-head"><span>Convert units</span></div>
+        <div class="calc-convert">
+          <input id="calcConvertValue" class="calc-input small" type="number" value="10" step="any" aria-label="Value to convert">
+          <div class="calc-convert-row">
+            <select id="calcConvertGroup" class="calc-select" aria-label="Unit category"></select>
+          </div>
+          <div class="calc-convert-row">
+            <select id="calcConvertFrom" class="calc-select" aria-label="From unit"></select>
+            <span aria-hidden="true">→</span>
+            <select id="calcConvertTo" class="calc-select" aria-label="To unit"></select>
+          </div>
+          <output id="calcConvertResult" class="calc-convert-result" aria-live="polite">—</output>
+        </div>
+        <p class="calc-note">The same engine answers <code>&lt;calc&gt;…&lt;/calc&gt;</code> tags in chat, so arithmetic in answers is exact rather than guessed.</p>
+      </aside>
+    </div>
+  </section>
 
   <div class="modal-backdrop" id="modalBackdrop" hidden>
     <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">

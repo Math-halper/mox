@@ -8,14 +8,20 @@ This folder is the library Mox reads. Every `.md` (or `.txt`, `.pdf`, `.csv`, `.
 | --- | --- | --- |
 | `math/` | Arithmetic and number sense, algebra, geometry and trigonometry, calculus, probability and statistics, formula reference, functions/logs/discrete math | 7 |
 | `reading/` | Reading comprehension, grammar and punctuation, writing and style, vocabulary and word roots, literature and rhetoric, forms and close reading | 6 |
-| `technology/` | How computers work, the internet and the web, programming fundamentals, AI and machine learning, cybersecurity and privacy, data and SQL, software engineering practices, web development | 8 |
+| `technology/` | How computers work, the internet and the web, programming fundamentals, AI and machine learning, cybersecurity and privacy, data and SQL, software engineering practices, web development, **HTML reference, CSS reference, JavaScript reference, APIs/HTTP/JSON** | 12 |
 | `science/` | Physics, chemistry, biology and Earth science, astronomy and space, chemistry of reactions and materials, electricity/waves/modern physics | 6 |
 | `humanities/` | World history timeline, geography and cultures, philosophy and critical thinking, modern history 1900–today, cities/climate/maps | 5 |
 | `life/` | Health and wellbeing, money and personal finance, study skills and learning, careers and interviews, everyday law and civics, cooking and food safety | 6 |
 
 Plus the Mox starter guide at the top level.
 
-Total: 39 documents, roughly 29k words.
+Total: 43 documents, roughly 39k words.
+
+The four reference documents are deliberately dense: every common HTML element and
+attribute, the CSS property groups and layout systems, the JavaScript language and
+standard library plus DOM/events/web APIs, and how HTTP APIs and JSON work. They are
+retrieved like any other document, so a question about `grid-template-columns` or
+`array.reduce` lands on the reference rather than a summary.
 
 ## Adding your own material
 

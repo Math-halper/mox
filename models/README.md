@@ -18,7 +18,7 @@ models/
 | Model | `HuggingFaceTB/SmolLM2-135M-Instruct` |
 | Quantization | Q4_1 (GGUF v3) |
 | Size | 98,362,432 bytes |
-| Context | 8,192 trained, 4,096 used per session |
+| Context | 8,192 trained and used per session |
 | License | Apache-2.0 |
 
 It is committed so a fresh clone runs a real model with no downloads.
@@ -47,9 +47,37 @@ Each download is registered in `manifest.json`:
 }
 ```
 
-To add one by hand, copy the `.gguf` in, append an entry, and reload the page. You can
-also load a `.gguf` from your computer at runtime without touching this folder
-(**Model & settings → Load a .gguf from this computer**).
+To add one by hand, copy the `.gguf` in, append an entry, and reload the page.
+
+You can also upload a `.gguf` from your computer at runtime without touching this
+folder (**Model & settings → Upload a .gguf**). Uploads are copied into the browser's
+IndexedDB, appear in the same picker marked *your upload*, and survive reloads until
+you remove them. They are never sent anywhere. Keep uploads to a few hundred MB: the
+browser's storage quota and the tab's memory are the limit, not git.
+
+## Which model to add for code
+
+For building websites in this app, `Qwen2.5-Coder-1.5B-Instruct` at Q4_K_M (about
+1.1 GB) is the sweet spot: code-specialised, Apache-2.0, 32k context, and small
+enough for a browser tab. `Qwen3-4B-Instruct-2507` (Q4_K_M, about 2.5 GB) is the
+next step up if the machine has the memory. Anything at 7B and above (about 4.7 GB)
+should be run by llama.cpp or Ollama outside the tab.
+
+```sh
+python3 tools/fetch_model.py --preset qwen-coder-1.5b
+python3 tools/fetch_model.py --preset qwen3-4b
+```
+
+Each catalog entry can carry `page` (the Hugging Face file page, which always has a
+working Download button), `mirror` (a second host for the same file) and `sha256`
+(shown truncated in the app, so a download can be checked). If `huggingface.co` is
+blocked on the machine, download through a mirror instead:
+`python3 tools/fetch_model.py --preset qwen-coder-1.5b --mirror https://hf-mirror.com`.
+
+`manifest.json` also has a `catalog` array: recommended models that are **not** on
+disk yet, each with a `download` URL and a size. The model screen lists them with a
+plain download link, so a visitor can fetch the file and upload it without editing
+this folder. Remove an entry from `catalog` once you ship the weights yourself.
 
 ## Why only one file is in git
 

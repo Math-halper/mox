@@ -3,6 +3,16 @@
 // wllama (llama.cpp compiled to WebAssembly). The knowledge library in
 // knowledge/ is indexed locally and retrieved for every question.
 
+import { evaluate as evaluateExpression, resolveCalcTags, initCalculator, openCalculator, closeCalculator } from './calculator.js';
+import {
+  initWorkspace, openWorkspace, closeWorkspace, isWorkspaceOpen, openWorkspaceWithCode,
+  extractFileWrites, stripFileWrites, applyFileWrites, workspaceManifest, workspaceContext,
+  questionNeedsWorkspace, workspaceApi, WORKSPACE_TOOL_INSTRUCTIONS, autoApplyEnabled
+} from './workspace.js';
+import {
+  listUploadedModels, saveUploadedModel, getUploadedModel, deleteUploadedModel, storageQuota
+} from './model-store.js';
+
 const WLLAMA_URL = new URL('vendor/wllama/wllama.js', import.meta.url).href;
 const WLLAMA_WASM = new URL('vendor/wllama/wllama.wasm', import.meta.url).href;
 const MODEL_MANIFEST = 'models/manifest.json';
@@ -16,7 +26,7 @@ const MAX_FILE_BYTES = 12 * 1024 * 1024;
 const MAX_EXCERPTS = 4;
 const EXCERPT_CHARS = 700;
 const MAX_NEW_TOKENS = 320;
-const CONTEXT_SIZE = 4096;
+const CONTEXT_SIZE = 8192;   // the bundled model supports 8k; code needs the room
 const HISTORY_TURNS = 6;          // how many past messages the model sees
 const CHAT_META_KEY = 'conversations';
 const CHAT_LIMIT = 30;            // conversations kept in browser storage
@@ -539,28 +549,44 @@ function setSourceBadge(kind, text) {
 }
 
 async function readModelManifest() {
+  let base = { version: 1, default: null, models: [] };
   try {
     const response = await fetch(MODEL_MANIFEST, { cache: 'no-store' });
     if (!response.ok) throw new Error(String(response.status));
-    modelManifest = await response.json();
-    const available = [];
-    for (const entry of modelManifest.models || []) {
-      try {
-        const head = await fetch(`models/${entry.file}`, { method: 'HEAD', cache: 'no-store' });
-        if (head.ok) available.push(entry);
-      } catch { /* ignore missing files */ }
-    }
-    modelManifest.available = available;
-    return available;
+    base = await response.json();
   } catch (error) {
     console.warn('Model manifest unavailable:', error);
-    modelManifest = { models: [], available: [] };
-    return [];
   }
+
+  // Bundled/served models are listed only if the file is actually reachable.
+  const available = [];
+  for (const entry of base.models || []) {
+    try {
+      const head = await fetch(`models/${entry.file}`, { method: 'HEAD', cache: 'no-store' });
+      if (head.ok) available.push(entry);
+    } catch { /* ignore missing files */ }
+  }
+
+  // Models the user uploaded earlier live in IndexedDB and are always offered.
+  const uploads = await listUploadedModels();
+
+  modelManifest = {
+    ...base,
+    models: [...(base.models || []), ...uploads],
+    available: [...available, ...uploads]
+  };
+  updateUploadBadge(uploads.length);
+  return modelManifest.available;
+}
+
+function updateUploadBadge(count) {
+  const label = document.getElementById('uploadCount');
+  if (!label) return;
+  label.textContent = count ? `${count} uploaded` : 'none uploaded';
 }
 
 function activeModel() {
-  const available = modelManifest?.available || [];
+  const available = typeof visibleModels === 'function' ? visibleModels() : (modelManifest?.available || []);
   return available.find((entry) => entry.id === chosenModelId) || available[0] || null;
 }
 
@@ -637,31 +663,44 @@ async function startModel({ auto = false } = {}) {
     loadedModel = model;
     elements.modelName.textContent = describeModel();
     elements.modelSize.textContent = displaySize(model.bytes);
+    if (model.bytes > 1.5e9) {
+      showToast(`${model.name} is ${displaySize(model.bytes)} — large for a browser tab. If it fails to load, try Qwen2.5-Coder 1.5B.`);
+    }
 
-    // 1. Fetch the weights from this site, with a real progress bar.
-    elements.progressLabel.textContent = `Fetching ${model.file} from this site`;
-    const response = await fetch(`models/${model.file}`);
-    if (!response.ok) throw new Error(`models/${model.file} → HTTP ${response.status}`);
-    const total = Number(response.headers.get('Content-Length')) || model.bytes;
+    // 1. Get the weights: from this site, or from the model you uploaded.
     let blob;
-    if (response.body && typeof response.body.getReader === 'function') {
-      const reader = response.body.getReader();
-      const chunks = [];
-      let received = 0;
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        received += value.length;
-        const percent = Math.min(99, Math.round((received / total) * 100));
-        elements.progressBar.style.width = `${percent}%`;
-        elements.progressPercent.textContent = `${percent}%`;
-        elements.progressLabel.textContent = `Fetching ${model.file} · ${displaySize(received)} of ${displaySize(total)}`;
-        setSourceBadge('local', `◈ model ${percent}%`);
-      }
-      blob = new Blob(chunks);
+    if (model.uploaded) {
+      elements.progressLabel.textContent = `Reading ${model.name} from this browser`;
+      const record = await getUploadedModel(model.id);
+      if (!record?.blob) throw new Error(`${model.name} is no longer in this browser. Upload it again.`);
+      blob = record.blob;
+      elements.progressBar.style.width = '60%';
+      elements.progressPercent.textContent = '…';
+      setSourceBadge('local', '◈ your model');
     } else {
-      blob = await response.blob();
+      elements.progressLabel.textContent = `Fetching ${model.file} from this site`;
+      const response = await fetch(`models/${model.file}`);
+      if (!response.ok) throw new Error(`models/${model.file} → HTTP ${response.status}`);
+      const total = Number(response.headers.get('Content-Length')) || model.bytes;
+      if (response.body && typeof response.body.getReader === 'function') {
+        const reader = response.body.getReader();
+        const chunks = [];
+        let received = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          received += value.length;
+          const percent = Math.min(99, Math.round((received / total) * 100));
+          elements.progressBar.style.width = `${percent}%`;
+          elements.progressPercent.textContent = `${percent}%`;
+          elements.progressLabel.textContent = `Fetching ${model.file} · ${displaySize(received)} of ${displaySize(total)}`;
+          setSourceBadge('local', `◈ model ${percent}%`);
+        }
+        blob = new Blob(chunks);
+      } else {
+        blob = await response.blob();
+      }
     }
 
     // 2. Start llama.cpp in WebAssembly and load the weights.
@@ -692,6 +731,7 @@ async function startModel({ auto = false } = {}) {
     elements.load.disabled = true;
     setSourceBadge('local', '◈ model on this site');
     setModelStatus('ready', `${model.name} ready`);
+    updateModelMenu();
     updateComposer();
     await writeMeta('modelChoice', model.id);
     if (!auto) showToast(`${model.name} loaded. Ask something about the knowledge library.`);
@@ -720,6 +760,22 @@ function buildMessages(question, excerpts) {
       ).join('\n\n')
     : '(no library passage matched this question)';
 
+  // The workspace is the user's live code. Only attach the file bodies when the
+  // question looks like it is about that code, so ordinary questions stay small.
+  const manifest = workspaceManifest();
+  const usesWorkspace = questionNeedsWorkspace(question);
+  const workspaceBlock = [
+    '',
+    'WORKSPACE FILES (the user\'s live code in the Workspace panel):',
+    manifest,
+    ...(usesWorkspace ? ['', WORKSPACE_TOOL_INSTRUCTIONS, '', 'FILE CONTENTS:', workspaceContext(5000)] : [])
+  ].join('\n');
+
+  const common = [
+    'For any arithmetic, write <calc>expression</calc> and the app will compute it exactly — never guess a number.',
+    'Code is welcome when it helps: a fenced block with the language name works, and the app can preview it.'
+  ];
+
   const rules = grounded
     ? [
         'You are Mox, a careful assistant running privately in the user\'s browser.',
@@ -728,6 +784,7 @@ function buildMessages(question, excerpts) {
         'If they only partly help, use them, then add what you know — do not refuse.',
         'Never say you have "no sources" when passages are listed below.',
         'Be direct and specific: no preamble, no restating the question, no filler.',
+        ...common,
         'Plain text, at most 120 words. Use a short list only for steps or options.'
       ]
     : [
@@ -736,10 +793,11 @@ function buildMessages(question, excerpts) {
         'Answer the question directly and briefly; do not mention sources, passages or a library.',
         'If you genuinely do not know, say so in one short sentence.',
         'Be direct and specific: no preamble, no restating the question, no filler.',
+        ...common,
         'Plain text, at most 120 words. Use a short list only for steps or options.'
       ];
 
-  const system = [...rules, '', 'SOURCES:', sources].join('\n');
+  const system = [...rules, '', 'SOURCES:', sources, workspaceBlock].join('\n');
 
   const messages = [{ role: 'system', content: system }];
   for (const turn of history.slice(-HISTORY_TURNS)) messages.push(turn);
@@ -754,14 +812,14 @@ function chatMLPrompt(messages) {
   return messages.map((message) => `<|im_start|>${message.role}\n${message.content}<|im_end|>`).join('\n') + '\n<|im_start|>assistant\n';
 }
 
-async function streamChatML(messages, onToken, abortSignal) {
+async function streamChatML(messages, onToken, abortSignal, maxTokens = MAX_NEW_TOKENS, temperature = 0.3) {
   let streamed = '';
   await engine.createCompletion({
     prompt: chatMLPrompt(messages),
     stream: true,
     abortSignal,
-    max_tokens: MAX_NEW_TOKENS,
-    temp: 0.3,
+    max_tokens: maxTokens,
+    temp: temperature,
     top_k: 40,
     top_p: 0.92,
     penalty_repeat: 1.15,
@@ -789,6 +847,38 @@ async function generateAnswer(question, excerpts, onToken, abortSignal) {
     if (wasAborted(error)) throw error;
     console.warn('Chat template failed, using ChatML instead:', error);
     return cleanupAnswer(await streamChatML(messages, onToken, abortSignal));
+  }
+}
+
+// Raw model call with options — used by the workspace AI panel, which must not
+// have its code truncated by the chat answer cleaner.
+function stripChatTokens(text) {
+  return String(text || '')
+    .replace(/<\|im_end\|>[\s\S]*$/g, '')
+    .replace(/<\|.*?\|>/g, '')
+    .trim();
+}
+
+async function modelComplete(messages, { maxTokens = MAX_NEW_TOKENS, temperature = 0.3, onToken, signal } = {}) {
+  if (!engine) throw new Error('The model is not loaded yet');
+  let streamed = '';
+  const onData = (chunk) => {
+    const piece = chunk?.choices?.[0]?.delta?.content ?? chunk?.choices?.[0]?.text;
+    if (!piece) return;
+    streamed += piece;
+    if (onToken) onToken(piece);
+  };
+  try {
+    const result = await engine.createChatCompletion({
+      messages, stream: true, abortSignal: signal,
+      max_tokens: maxTokens, temp: temperature, top_k: 40, top_p: 0.92,
+      penalty_repeat: 1.15, penalty_last_n: 96, onData
+    });
+    return stripChatTokens(result?.choices?.[0]?.message?.content || streamed);
+  } catch (error) {
+    if (wasAborted(error)) throw error;
+    console.warn('Chat template failed, using ChatML instead:', error);
+    return stripChatTokens(await streamChatML(messages, onToken, signal, maxTokens, temperature));
   }
 }
 
@@ -884,6 +974,49 @@ function noSourcesNote() {
   return note;
 }
 
+// Pull HTML/CSS/JS out of a chat answer so it can be previewed and edited.
+function codeBundleFromText(text) {
+  const blocks = [...String(text || '').matchAll(/```([^\n`]*)\n([\s\S]*?)```/g)]
+    .map((match) => ({ info: match[1].trim().toLowerCase().split(/\s+/)[0], body: match[2] }));
+  if (!blocks.length) return null;
+  const pick = (names) => blocks.filter((block) => names.includes(block.info)).map((block) => block.body).join('\n');
+  const html = pick(['html', 'htm']);
+  const css = pick(['css']);
+  const js = pick(['js', 'javascript', 'mjs']);
+  if (!html && !css && !js) return null;
+  return { html, css, js, title: 'code from Mox' };
+}
+
+/**
+ * Turn raw model output into what the chat shows:
+ *  • mox:write blocks are applied to the workspace (when the toggle allows it)
+ *  • <calc>…</calc> tags become exact results
+ * Returns the display text and the files that changed.
+ */
+function finalizeAnswer(text, { apply = true } = {}) {
+  let value = String(text || '');
+  const writes = extractFileWrites(value).filter((write) => write.content.trim().length > 1);
+  let applied = false;
+  let paths = [];
+
+  if (writes.length) {
+    value = stripFileWrites(value);
+    if (apply && autoApplyEnabled()) {
+      const result = applyFileWrites(writes, { source: 'Mox' });
+      applied = result.applied > 0;
+      paths = result.paths;
+      value = [value, applied
+        ? `**Workspace updated:** ${result.paths.join(', ')}. Open the workspace to see the preview.`
+        : '**Workspace checked:** the files already match this answer.'
+      ].filter(Boolean).join('\n\n');
+    } else {
+      value = [value, `**Workspace changes ready:** ${writes.map((write) => write.path).join(', ')}. File editing is off, so nothing was written.`].filter(Boolean).join('\n\n');
+    }
+  }
+
+  return { text: resolveCalcTags(value).trim(), writes, applied, paths };
+}
+
 function attachActions(body, record) {
   body.querySelector('.msg-actions')?.remove();
   if (!record) return;
@@ -910,6 +1043,27 @@ function attachActions(body, record) {
     again.disabled = false;
     again.addEventListener('click', () => regenerate(record));
     row.append(again);
+
+    // Code in an answer can be visualised in the workspace preview.
+    const bundle = codeBundleFromText(record.text);
+    if (bundle) {
+      const preview = document.createElement('button');
+      preview.type = 'button';
+      preview.className = 'msg-action';
+      preview.textContent = 'Preview code';
+      preview.title = 'Open this code in the workspace with a live preview';
+      preview.addEventListener('click', () => openWorkspaceWithCode(bundle));
+      row.append(preview);
+    }
+    if (record.files?.length || bundle) {
+      const workspace = document.createElement('button');
+      workspace.type = 'button';
+      workspace.className = 'msg-action';
+      workspace.textContent = 'Workspace';
+      workspace.title = 'Open the code workspace';
+      workspace.addEventListener('click', () => openWorkspace());
+      row.append(workspace);
+    }
   }
 
   if (record.stats) {
@@ -928,7 +1082,7 @@ function renderMessage(role, text, excerpts = [], record = null) {
   body.className = 'message-body';
   // Answers are stored as markdown-ish text, so reopening a chat looks exactly
   // like it did while the model was streaming.
-  if (role === 'assistant' && text) body.innerHTML = renderRich(text);
+  if (role === 'assistant' && text) body.innerHTML = renderRich(resolveCalcTags(text));
   else body.textContent = text;
   row.append(body);
   if (excerpts?.length && text) body.append(citationPills(excerpts, record));
@@ -967,6 +1121,7 @@ async function saveChats() {
           role: record.role,
           text: record.text.slice(0, SAVED_TEXT_LIMIT),
           stats: record.stats || '',
+          files: record.files || [],
           excerpts: (record.excerpts || []).slice(0, MAX_EXCERPTS).map((item) => ({
             text: item.text.slice(0, EXCERPT_CHARS),
             doc: {
@@ -996,6 +1151,7 @@ async function restoreChats() {
           role: record.role,
           text: record.text,
           stats: record.stats || '',
+          files: record.files || [],
           excerpts: record.excerpts || []
         }))
     });
@@ -1160,6 +1316,24 @@ function stopGeneration() {
   abortController.abort();
 }
 
+// A question that is really a calculation should not depend on the model
+// guessing. "what is 1234 * 5678?" is answered by the calculator, exactly.
+function pureCalculation(question) {
+  let expression = String(question || '').trim()
+    .replace(/^(?:what(?:'s| is)|whats|calculate|compute|evaluate|solve|convert|how much is|how many)\s+/i, '')
+    .replace(/[?=\s]+$/g, '')
+    .trim();
+  if (!expression || expression.length > 140) return null;
+  if (!/[0-9]/.test(expression)) return null;
+  if (/[\u0000-\u001f]/.test(expression)) return null;
+  if (!/^[\s0-9A-Za-zπφ°µ²³.,+\-*/^%!()]+$/.test(expression)) return null;
+  // Require an actual operation or function call, not just a number.
+  if (!/[+\-*/^%!(]|\b(?:to|in|of|sqrt|sin|cos|tan|log|ln|round|mean|median|convert|abs)\b/i.test(expression)) return null;
+  const result = evaluateExpression(expression);
+  if (!result.ok) return null;
+  return { ...result, expression };
+}
+
 async function handleSubmit(event) {
   event.preventDefault();
   if (generating) { stopGeneration(); return; }
@@ -1170,6 +1344,25 @@ async function handleSubmit(event) {
   elements.input.style.height = 'auto';
   addRecord('user', question);
   const userRecord = activeChat().records[activeChat().records.length - 1];
+
+  const calculation = pureCalculation(question);
+  if (calculation) {
+    const body = [
+      `\`${calculation.expression}\` = **${calculation.text}**`,
+      calculation.conversion && calculation.conversion !== `${calculation.text}` ? calculation.conversion : '',
+      '',
+      '_Computed by the calculator in this browser — no model guesswork._'
+    ].filter(Boolean).join('\n');
+    const record = addRecord('assistant', body);
+    record.calculated = calculation.expression;
+    const calcBody = elements.messages.lastElementChild.querySelector('.message-body');
+    attachActions(calcBody, record);
+    announce('Answer ready.');
+    updateComposer();
+    elements.input.focus();
+    return;
+  }
+
   const excerpts = retrieve(question);
   updateComposer();
 
@@ -1217,7 +1410,7 @@ async function runGeneration(question, excerpts, userRecord) {
       stopped = true;
       const partial = cleanupAnswer(streamed);
       if (partial.length > 1) {
-        paintAnswer(answer, body, `${partial} …`, excerpts, started);
+        paintAnswer(answer, body, `${partial} …`, excerpts, started, { apply: false });
         showToast('Stopped. The answer above is what the model had produced.');
       } else {
         body.closest('.message')?.remove();
@@ -1244,14 +1437,16 @@ async function runGeneration(question, excerpts, userRecord) {
   }
 }
 
-function paintAnswer(record, body, text, excerpts, started) {
+function paintAnswer(record, body, text, excerpts, started, { apply = true } = {}) {
   const seconds = Math.max(0.1, (performance.now() - started) / 1000);
+  const prepared = finalizeAnswer(text, { apply });
   // Rough token estimate for a progress hint; exact counts are not exposed.
   const tokens = Math.max(1, Math.round(text.length / 4));
-  record.text = text;
+  record.text = prepared.text;
   record.excerpts = excerpts;
+  record.files = [...new Set([...(record.files || []), ...prepared.paths])];
   record.stats = `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)}s · ${Math.round(tokens / seconds)} tok/s`;
-  body.innerHTML = renderRich(text);
+  body.innerHTML = renderRich(prepared.text);
   if (excerpts?.length) body.append(citationPills(excerpts, record));
   else body.append(noSourcesNote());
   attachActions(body, record);
@@ -1417,21 +1612,188 @@ function openPassage(record, index) {
   revealModal();
 }
 
-function modelListMarkup() {
-  const available = modelManifest?.available || [];
-  if (!available.length) {
-    return '<p>No model files were found in <code>models/</code>. Run <code>python3 tools/fetch_model.py</code>, then reload.</p>';
+// Models removed from the picker. Uploads are deleted outright; models served
+// from models/ can only be hidden, because the file belongs to the site.
+let hiddenModels = [];
+
+function visibleModels() {
+  return (modelManifest?.available || []).filter((entry) => !hiddenModels.includes(entry.id));
+}
+
+async function hideModel(id) {
+  if (!hiddenModels.includes(id)) hiddenModels.push(id);
+  await writeMeta('hiddenModels', hiddenModels);
+  if (chosenModelId === id) {
+    chosenModelId = null;
+    await writeMeta('modelChoice', null);
   }
-  return `<div class="model-choices">${available.map((entry) => `
-    <button class="model-choice${entry.id === chosenModelId ? ' active' : ''}" data-model="${escapeHTML(entry.id)}">
-      <span class="model-choice-name">${escapeHTML(entry.name)}${entry.bundled ? ' <em>bundled</em>' : ''}</span>
-      <span class="model-choice-meta">${escapeHTML([entry.parameters, entry.quantization, displaySize(entry.bytes), entry.license].filter(Boolean).join(' · '))}</span>
-    </button>`).join('')}</div>`;
+  await readModelManifest();
+}
+
+async function unhideModels() {
+  hiddenModels = [];
+  await writeMeta('hiddenModels', hiddenModels);
+  await readModelManifest();
+}
+
+function updateModelMenu() {
+  const nameEl = document.querySelector('.model-menu-name');
+  const subEl = document.querySelector('.model-menu-sub');
+  const model = loadedModel || activeModel();
+  if (!nameEl) return;
+  if (!model) { nameEl.textContent = 'Mox'; if (subEl) subEl.textContent = ''; return; }
+  const short = model.name.split(/\s+/)[0];
+  nameEl.textContent = short || model.name;
+  if (subEl) subEl.textContent = model.parameters || (model.quantization || '');
+}
+
+// Drop the loaded weights so the app falls back to search-only until another
+// model is picked. Used when the selected model is deleted or hidden.
+function unloadEngine(reason = '') {
+  if (generating) stopGeneration();
+  try { engine?.exit?.(); } catch (error) { console.warn('Could not unload the model:', error); }
+  engine = null;
+  llm = null;
+  loadedModel = null;
+  modelReady = false;
+  searchOnly = true;
+  elements.progress.hidden = true;
+  elements.load.disabled = false;
+  elements.load.classList.remove('loaded');
+  elements.load.innerHTML = '<span class="button-sparkle">✳</span> Start a model';
+  elements.modelTitle.textContent = 'Search-only mode';
+  elements.modelDescription.textContent = 'No model is loaded. Pick one in Model & settings, or upload a .gguf.';
+  elements.modelSize.textContent = 'Search only';
+  setModelStatus('idle', 'No model loaded');
+  setSourceBadge('remote', '◈ search only');
+  updateComposer();
+  updateModelMenu();
+  if (reason) showToast(reason);
+}
+
+// Switch models without reloading the page: unload the current weights, then
+// load the chosen ones through the same progress path as the start card.
+async function switchModel(id) {
+  const entry = visibleModels().find((model) => model.id === id);
+  if (!entry) return false;
+  if (generating) stopGeneration();
+
+  chosenModelId = id;
+  await writeMeta('modelChoice', id);
+
+  modelReady = false;
+  searchOnly = false;
+  loadedModel = null;
+  llm = null;
+  if (engine) {
+    try { await engine.exit?.(); } catch (error) { console.warn('Could not unload the previous model:', error); }
+    engine = null;
+  }
+
+  // startModel refuses to run when the button is disabled or marked loaded.
+  elements.load.disabled = false;
+  elements.load.classList.remove('loaded');
+  elements.load.innerHTML = '<span class="button-sparkle">✳</span> Start the model';
+  elements.progress.hidden = false;
+  elements.progressBar.style.width = '0%';
+  elements.progressPercent.textContent = '0%';
+  elements.modelSize.textContent = displaySize(entry.bytes);
+  updateComposer();
+  updateModelMenu();
+
+  await startModel({ auto: true });
+  if (!modelReady) {
+    showToast(`${entry.name} could not start in this tab. Reload the page to try again.`);
+    return false;
+  }
+  updateModelMenu();
+  showToast(`${entry.name} is ready.`);
+  return true;
+}
+
+function modelListMarkup({ manage = false } = {}) {
+  const available = visibleModels();
+  if (!available.length) {
+    return `<p>No models are available. Upload a <code>.gguf</code> below${hiddenModels.length ? ', or restore the hidden ones' : ', or run <code>python3 tools/fetch_model.py</code>'}.</p>`;
+  }
+  return `<div class="model-choices">${available.map((entry) => {
+    const inUse = entry.id === chosenModelId;
+    return `
+    <div class="model-choice${inUse ? ' active' : ''}">
+      <div class="model-choice-head">
+        <span class="model-choice-name">${escapeHTML(entry.name)}${entry.bundled ? ' <em>bundled</em>' : ''}${entry.uploaded ? ' <em>your upload</em>' : ''}</span>
+        ${inUse ? `<span class="model-choice-badge">${modelReady ? 'In use' : 'Selected'}</span>` : ''}
+      </div>
+      <span class="model-choice-meta">${escapeHTML([entry.parameters, entry.quantization, displaySize(entry.bytes), entry.license].filter(Boolean).join(' · '))}${entry.bytes > 1.5e9 ? ' · heavy for a tab' : ''}</span>
+      ${entry.note ? `<span class="model-choice-note">${escapeHTML(entry.note)}</span>` : ''}
+      ${manage ? `<div class="model-choice-actions">
+        <button type="button" class="model-use${inUse ? ' current' : ''}" data-use-model="${escapeHTML(entry.id)}"${inUse ? ' disabled' : ''}>${inUse ? (modelReady ? 'In use' : 'Selected') : 'Use this model'}</button>
+        <button type="button" class="model-delete" data-remove-model="${escapeHTML(entry.id)}" title="${entry.uploaded ? `Delete ${escapeHTML(entry.name)} from this browser` : `Remove ${escapeHTML(entry.name)} from this list`}">${entry.uploaded ? 'Delete' : 'Remove from list'}</button>
+      </div>` : ''}
+    </div>`;
+  }).join('')}</div>`;
+}
+
+// Models this site knows about but that are not on disk yet. Downloading is a
+// plain link the visitor clicks; the page itself never fetches model weights
+// from anywhere but this site.
+function catalogMarkup() {
+  const available = new Set((modelManifest?.available || []).map((entry) => entry.file));
+  const hidden = new Set(hiddenModels);
+  const entries = (modelManifest?.catalog || []).filter((entry) => !available.has(entry.file) && !hidden.has(entry.id));
+  if (!entries.length) return '';
+  return `
+    <div class="model-catalog">
+      <div class="model-catalog-head"><span>Get a better model</span><span>download, then upload here</span></div>
+      ${entries.map((entry) => `
+        <div class="model-catalog-row">
+          <div class="model-catalog-text">
+            <strong>${escapeHTML(entry.name)}</strong>
+            <span>${escapeHTML([entry.parameters, entry.quantization, displaySize(entry.bytes), entry.license].filter(Boolean).join(' · '))}</span>
+            ${entry.note ? `<em>${escapeHTML(entry.note)}</em>` : ''}
+            ${entry.sha256 ? `<em class="model-catalog-sha" title="SHA-256 of the file">sha256 ${escapeHTML(entry.sha256.slice(0, 16))}…</em>` : ''}
+          </div>
+          <div class="model-catalog-actions">
+            ${entry.download ? `<a class="model-catalog-link" href="${escapeHTML(entry.download)}" target="_blank" rel="noopener noreferrer">Download .gguf ↗</a>` : ''}
+            ${entry.page ? `<a class="model-catalog-secondary" href="${escapeHTML(entry.page)}" target="_blank" rel="noopener noreferrer">File page ↗</a>` : ''}
+            ${entry.mirror ? `<a class="model-catalog-secondary" href="${escapeHTML(entry.mirror)}" target="_blank" rel="noopener noreferrer" title="${escapeHTML(entry.mirrorName || 'Mirror download')}">Mirror ↗</a>` : ''}
+            ${entry.download ? `<button type="button" class="model-catalog-secondary" data-copy-link="${escapeHTML(entry.download)}" title="Copy the download link">Copy link</button>` : ''}
+          </div>
+        </div>`).join('')}
+      <p class="model-catalog-foot">If a download fails, the network is usually blocking <code>huggingface.co</code> or its CDN. Try the mirror, the file page, or <code>HF_ENDPOINT=https://hf-mirror.com python3 tools/fetch_model.py --preset qwen-coder-1.5b</code>.</p>
+    </div>`;
+}
+
+function modelScreenMarkup() {
+  return `
+    <p><strong>Running now:</strong> ${escapeHTML(modelReady ? describeModel() : 'no model loaded')} — llama.cpp compiled to WebAssembly, executing on this device.</p>
+    <p><strong>Choose a model.</strong> Pick one and it loads in place; the page does not reload. Anything you upload is stored in this browser, listed here, and offered on the start screen from then on.</p>
+    ${modelListMarkup({ manage: true })}
+    <p class="model-switch-status" id="modelSwitchStatus" role="status" aria-live="polite"></p>
+    <div class="source-actions">
+      <button class="modal-secondary" id="modelUpload">Upload a .gguf</button>
+      <button class="modal-secondary" id="modelRefresh">Rescan</button>
+      ${hiddenModels.length ? `<button class="modal-secondary" id="modelRestore">Restore ${hiddenModels.length} hidden model${hiddenModels.length === 1 ? '' : 's'}</button>` : ''}
+    </div>
+    <p class="model-storage-line" id="modelStorage">Models are stored on this device only.</p>
+    <p class="model-tip"><strong>Building websites?</strong> Start with <code>Qwen2.5-Coder 1.5B</code> (about 1.1 GB): download it below, then upload it here. <code>Qwen3 4B Instruct</code> writes better code but needs about 2.5 GB of browser memory.</p>
+    ${catalogMarkup()}
+    <p><strong>Deleting:</strong> an uploaded model is deleted from this browser (its storage is freed). A model served from <code>models/</code> can only be hidden from this list, because the file belongs to the site; <strong>Rescan</strong> and <strong>Restore</strong> bring hidden ones back.</p>
+    <p><strong>Knowledge library:</strong> ${libraryDocuments.length} documents across ${new Set(libraryDocuments.map((doc) => doc.categoryLabel)).size} topics, indexed in your browser.<br>
+    <strong>Your files:</strong> ${userDocuments.length} imported document${userDocuments.length === 1 ? '' : 's'} in IndexedDB.<br>
+    <strong>Chats:</strong> ${conversations.filter((chat) => chat.records.length).length} saved in this browser.</p>
+    <div class="source-actions">
+      <button class="modal-secondary" id="exportChat">Export this chat</button>
+      <button class="modal-secondary" id="clearChats">Delete all chats</button>
+    </div>
+    <p style="margin-top:16px"><strong>Keyboard</strong><br>
+    <code>⌘K</code> / <code>Ctrl K</code> new chat · <code>⌘/</code> focus the composer · <code>⌘J</code> calculator · <code>⌘⇧E</code> workspace · <code>Enter</code> send · <code>Shift Enter</code> new line · <code>Esc</code> close.</p>`;
 }
 
 function openModal(kind = 'privacy', category = null) {
   const header = {
     privacy: ['A NOTE ON PRIVACY', 'Everything stays with you.'],
+    models: ['MODEL LIBRARY', `${(modelManifest?.available || []).length} models available.`],
     settings: ['MODEL & DEVICE', 'A real model, running here.'],
     library: ['KNOWLEDGE LIBRARY', `${libraryDocuments.length} documents, built in.`]
   }[kind] || ['A NOTE ON PRIVACY', 'Everything stays with you.'];
@@ -1439,23 +1801,9 @@ function openModal(kind = 'privacy', category = null) {
   elements.modalKicker.textContent = header[0];
   elements.modalTitle.textContent = header[1];
 
-  if (kind === 'settings') {
-    elements.modalCopy.innerHTML = `
-      <p><strong>Running now:</strong> ${escapeHTML(modelReady ? describeModel() : 'no model loaded')} — llama.cpp compiled to WebAssembly, executing on this device.</p>
-      <p><strong>Where the weights come from:</strong> <code>models/</code> on this site. ${loadedModel ? `${escapeHTML(displaySize(loadedModel.bytes))} ${loadedModel.quantization || ''} GGUF, ${escapeHTML(loadedModel.license || 'open license')}.` : ''} Nothing is fetched from Hugging Face at runtime.</p>
-      <p><strong>Choose a model</strong></p>
-      ${modelListMarkup()}
-      <p><strong>Upgrade:</strong> run <code>python3 tools/fetch_model.py --preset qwen-0.5b</code> for a 0.5B model, or drop any <code>.gguf</code> file into <code>models/</code> and add it to <code>models/manifest.json</code>. Larger models are smarter but slower on a CPU.</p>
-      <p><strong>Knowledge library:</strong> ${libraryDocuments.length} documents across ${new Set(libraryDocuments.map((doc) => doc.categoryLabel)).size} topics, indexed in your browser.<br>
-      <strong>Your files:</strong> ${userDocuments.length} imported document${userDocuments.length === 1 ? '' : 's'} in IndexedDB.<br>
-      <strong>Chats:</strong> ${conversations.filter((chat) => chat.records.length).length} saved in this browser.</p>
-      <div class="source-actions">
-        <button class="modal-secondary" id="modelUpload">Load a .gguf from this computer</button>
-        <button class="modal-secondary" id="exportChat">Export this chat</button>
-        <button class="modal-secondary" id="clearChats">Delete all chats</button>
-      </div>
-      <p style="margin-top:16px"><strong>Keyboard</strong><br>
-      <code>⌘K</code> / <code>Ctrl K</code> new chat · <code>⌘/</code> focus the composer · <code>Enter</code> send · <code>Shift Enter</code> new line · <code>Esc</code> close.</p>`;
+  if (kind === 'settings' || kind === 'models') {
+    if (!chosenModelId) chosenModelId = activeModel()?.id || null;
+    elements.modalCopy.innerHTML = modelScreenMarkup();
   } else if (kind === 'library') {
     const groups = new Map();
     for (const doc of libraryDocuments) {
@@ -1494,12 +1842,107 @@ function openModal(kind = 'privacy', category = null) {
       <p>The model is a ${escapeHTML(describeModel())} GGUF file served by this website and executed in your browser by llama.cpp (WebAssembly). Your questions, your imported files, and the passages retrieved for them never leave this device.</p>
       <p><strong>The knowledge library</strong> is part of this site: ${libraryDocuments.length} documents covering mathematics, reading and writing, technology, science, humanities, and life skills. They are downloaded as text into your browser once, indexed locally, and searched for every question. They do not change the model's weights.</p>
       <p><strong>No third-party model host.</strong> The engine (<code>vendor/wllama</code>) and the weights (<code>models/</code>) sit next to the page, so once the model is loaded the app keeps working offline.</p>
-      <p><strong>Storage:</strong> imported files, the library cache, and the browser's copy of the model live in IndexedDB. Clearing site data removes them.</p>`;
+      <p><strong>Your workspace</strong> is the same story: files you write, import, or ask Mox to edit are saved in this browser's IndexedDB, previewed in a sandboxed frame, and never uploaded. The calculator runs locally and keeps its history in local storage.</p>
+      <p><strong>Storage:</strong> imported files, the library cache, uploaded models, your workspace, and the browser's copy of the model live in IndexedDB. Clearing site data removes them.</p>`;
   }
 
   revealModal();
+
   const upload = $('#modelUpload');
   if (upload) upload.addEventListener('click', () => elements.modelPicker.click());
+
+  const refreshModels = $('#modelRefresh');
+  if (refreshModels) refreshModels.addEventListener('click', async () => {
+    refreshModels.disabled = true;
+    await readModelManifest();
+    openModal(kind, category);
+    showToast(hiddenModels.length
+      ? `Model list refreshed · ${hiddenModels.length} hidden model${hiddenModels.length === 1 ? '' : 's'} still hidden`
+      : 'Model list refreshed.');
+  });
+
+  const restoreModels = $('#modelRestore');
+  if (restoreModels) restoreModels.addEventListener('click', async () => {
+    restoreModels.disabled = true;
+    await unhideModels();
+    openModal(kind, category);
+    showToast('Hidden models restored.');
+  });
+
+  elements.modalCopy.querySelectorAll('[data-copy-link]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const link = button.dataset.copyLink;
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(link);
+        copied = true;
+      } catch {
+        const area = document.createElement('textarea');
+        area.value = link;
+        area.style.position = 'fixed';
+        area.style.opacity = '0';
+        document.body.append(area);
+        area.select();
+        try { copied = document.execCommand?.('copy') !== false; } catch { copied = false; }
+        area.remove();
+      }
+      button.textContent = copied ? 'Copied' : 'Copy failed';
+      setTimeout(() => { button.textContent = 'Copy link'; }, 1500);
+    });
+  });
+
+  // Pick a model: loads in place, no page reload.
+  elements.modalCopy.querySelectorAll('[data-use-model]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const id = button.dataset.useModel;
+      const entry = visibleModels().find((model) => model.id === id);
+      if (!entry) return;
+      const status = $('#modelSwitchStatus');
+      elements.modalCopy.querySelectorAll('[data-use-model], [data-remove-model]').forEach((node) => { node.disabled = true; });
+      if (status) status.textContent = `Loading ${entry.name} (${displaySize(entry.bytes)})… this can take a few seconds.`;
+      button.textContent = 'Loading…';
+      const ok = await switchModel(id);
+      openModal(kind, category);
+      const after = $('#modelSwitchStatus');
+      if (after) after.textContent = ok ? `${entry.name} is ready.` : `${entry.name} could not start here; reload the page and try again.`;
+    });
+  });
+
+  storageQuota().then((estimate) => {
+    const line = $('#modelStorage');
+    if (!line || !estimate) return;
+    const used = displaySize(estimate.usage);
+    const quota = displaySize(estimate.quota);
+    line.textContent = `Browser storage used: ${used} of ${quota}. Uploaded models take up most of it when present.`;
+  });
+
+  elements.modalCopy.querySelectorAll('[data-remove-model]').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      const id = button.dataset.removeModel;
+      const entry = (modelManifest?.available || []).find((model) => model.id === id);
+      const name = entry?.name || 'this model';
+      const selected = id === chosenModelId;
+
+      if (entry?.uploaded) {
+        if (!window.confirm(`Delete ${name} from this browser? The file is removed and its storage is freed.${selected ? ' It is loaded right now, so Mox will stop until you pick another model.' : ''}`)) return;
+        await deleteUploadedModel(id);
+        hiddenModels = hiddenModels.filter((hidden) => hidden !== id);
+        await writeMeta('hiddenModels', hiddenModels);
+        if (selected) chosenModelId = null;
+        await writeMeta('modelChoice', chosenModelId);
+        if (selected) unloadEngine('That model was deleted.');
+      } else {
+        if (!window.confirm(`Remove ${name} from the model list? The file stays in models/ on the site, so Restore can bring it back.${selected ? ' It is selected, so Mox will switch to the next available model.' : ''}`)) return;
+        await hideModel(id);
+        if (selected) unloadEngine('That model was removed from the list.');
+      }
+
+      await readModelManifest();
+      openModal(kind, category);
+      showToast(entry?.uploaded ? 'Model deleted from this browser.' : 'Model removed from the list.');
+    });
+  });
 
   const exportButton = $('#exportChat');
   if (exportButton) exportButton.addEventListener('click', exportActiveChat);
@@ -1515,22 +1958,13 @@ function openModal(kind = 'privacy', category = null) {
     resetChat();
     showToast('All chats deleted.');
   });
-  elements.modalCopy.querySelectorAll('[data-model]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      const id = button.dataset.model;
-      if (id === chosenModelId) return;
-      chosenModelId = id;
-      await writeMeta('modelChoice', id);
-      closeModal();
-      showToast('Reloading with the selected model…');
-      location.reload();
-    });
-  });
 }
 
 /* ------------------------------------------------------------------ wiring */
 
 $('#loadModel').addEventListener('click', () => startModel());
+$('#modelChoose').addEventListener('click', () => openModal('models'));
+$('#modelCardUpload').addEventListener('click', () => elements.modelPicker.click());
 $('#sidebarToggle').addEventListener('click', () => {
   if (document.body.classList.contains('drawer-open')) closeDrawer();
   else openDrawer();
@@ -1590,7 +2024,15 @@ elements.input.addEventListener('keydown', (event) => {
   }
 });
 $('#newChat').addEventListener('click', resetChat);
-$('#modelMenu').addEventListener('click', () => openModal('settings'));
+$('#modelMenu').addEventListener('click', () => openModal('models'));
+$('#workspaceButton').addEventListener('click', () => { closeDrawer(); openWorkspace(); });
+$('#workspaceTop').addEventListener('click', () => openWorkspace());
+$('#quickWorkspace').addEventListener('click', () => openWorkspace());
+$('#calculatorButton').addEventListener('click', () => { closeDrawer(); openCalculator(); });
+$('#calcTop').addEventListener('click', () => openCalculator());
+$('#quickCalculator').addEventListener('click', () => openCalculator());
+$('#mobileWorkspace').addEventListener('click', () => openWorkspace());
+$('#mobileCalc').addEventListener('click', () => openCalculator());
 $('#quickAsk').addEventListener('click', () => {
   elements.input.focus();
   if (!modelReady && !searchOnly) showToast('The model is still loading — one moment.');
@@ -1612,8 +2054,19 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     elements.input.focus();
   }
+  if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'j') {
+    event.preventDefault();
+    openCalculator();
+  }
+  if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'e') {
+    event.preventDefault();
+    openWorkspace();
+  }
   if (event.key === 'Escape') {
+    const calculator = document.getElementById('calculatorPanel');
     if (!elements.modal.hidden) closeModal();
+    else if (calculator && calculator.hidden === false) closeCalculator();
+    else if (isWorkspaceOpen()) closeWorkspace();
     else closeDrawer();
   }
 });
@@ -1650,6 +2103,16 @@ document.addEventListener('visibilitychange', () => {
 
 async function loadModelFile(file) {
   try {
+    // Keep the file in the model library first, so it is listed on the model
+    // screen and still there after a reload (pick "your upload" to load it).
+    let stored = null;
+    try {
+      stored = await saveUploadedModel(file);
+    } catch (error) {
+      console.warn('Could not keep this model in the browser:', error);
+      showToast('This model works for now, but could not be stored for next time.');
+    }
+
     elements.progress.hidden = false;
     elements.modelTitle.textContent = 'Loading your .gguf file';
     elements.progressLabel.textContent = `${file.name} · ${displaySize(file.size)}`;
@@ -1660,7 +2123,12 @@ async function loadModelFile(file) {
     await engine.loadModel([file], { n_ctx: CONTEXT_SIZE, n_threads: threads, n_batch: 256, jinja: true });
     modelReady = true;
     searchOnly = false;
-    loadedModel = { name: file.name, bytes: file.size, parameters: '', quantization: '', license: 'your file' };
+    loadedModel = stored || { name: file.name, bytes: file.size, parameters: '', quantization: '', license: 'your file' };
+    if (stored) {
+      chosenModelId = stored.id;
+      await writeMeta('modelChoice', stored.id);
+      await readModelManifest();
+    }
     elements.progressBar.style.width = '100%';
     elements.progressPercent.textContent = 'Ready';
     elements.progressLabel.textContent = 'Model loaded on this device';
@@ -1670,7 +2138,9 @@ async function loadModelFile(file) {
     elements.load.innerHTML = '<span class="button-sparkle">✓</span> Model loaded';
     elements.load.classList.add('loaded');
     elements.load.disabled = true;
-    setModelStatus('ready', 'Custom model ready');
+    setModelStatus('ready', `${loadedModel.name} ready`);
+    setSourceBadge('local', '◈ your model');
+    updateModelMenu();
     updateComposer();
     showToast(`${file.name} loaded. Ask away.`);
   } catch (error) {
@@ -1695,6 +2165,17 @@ async function loadModelFile(file) {
     showToast('Open the published page, or run `python3 run.py` and use the printed address.');
     return;
   }
+
+  // The calculator and workspace are independent of the model: both initialise
+  // now and get the engine hooks they need for their AI panels.
+  initCalculator();
+  initWorkspace({
+    complete: modelComplete,
+    isReady: () => modelReady,
+    toast: showToast,
+    retrieve: (query, limit) => retrieve(query, limit || 2)
+  });
+
   try {
     if (!('indexedDB' in window)) throw new Error('IndexedDB is not available in this browser.');
     db = await openDatabase();
@@ -1704,6 +2185,8 @@ async function loadModelFile(file) {
       elements.libraryToggle.checked = false;
     }
     chosenModelId = await readMeta('modelChoice');
+    const savedHidden = await readMeta('hiddenModels');
+    if (Array.isArray(savedHidden)) hiddenModels = savedHidden.filter((id) => typeof id === 'string');
     renderSources();
     if (await restoreChats()) {
       renderChatList();
@@ -1721,6 +2204,8 @@ async function loadModelFile(file) {
     chosenModelId = chosenModelId && (modelManifest.available || []).some((entry) => entry.id === chosenModelId) ? chosenModelId : model.id;
     elements.modelName.textContent = describeModel();
     elements.modelSize.textContent = displaySize(model.bytes);
+    const menuSub = document.querySelector('.model-menu-sub');
+    if (menuSub && model.parameters) menuSub.textContent = model.parameters;
     setSourceBadge('local', '◈ model on this site');
   } else {
     setSourceBadge('remote', '◈ no model file');
@@ -1746,6 +2231,23 @@ window.__mox = {
   retrieve, allKnowledge, renderRich, makeChunks, openModal, resetChat, buildMessages,
   openConversation, deleteChat, openPassage, saveChats, restoreChats, closeDrawer, openDrawer,
   conversations, get activeChatId() { return activeChatId; },
+  // Calculator API: __mox.calc('sqrt(2)') → {ok, value, text}
+  calc: evaluateExpression,
+  openCalculator, closeCalculator,
+  // Workspace API: files(), read(path), writesFrom(text), apply(writes), open()
+  workspace: workspaceApi,
+  openWorkspace, openWorkspaceWithCode, finalizeAnswer, codeBundleFromText, pureCalculation,
+  models: {
+    list: () => modelManifest?.available || [],
+    visible: visibleModels,
+    hidden: () => [...hiddenModels],
+    catalog: () => modelManifest?.catalog || [],
+    reload: readModelManifest,
+    uploaded: listUploadedModels,
+    hide: hideModel,
+    restore: unhideModels,
+    switch: switchModel
+  },
   state: () => ({
     modelReady, searchOnly, libraryEnabled, generating,
     libraryCount: libraryDocuments.length, userCount: userDocuments.length,

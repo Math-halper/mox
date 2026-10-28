@@ -12,6 +12,11 @@ Requires only the Python standard library.
     python3 tools/fetch_model.py --preset qwen-0.5b  # download a preset
     python3 tools/fetch_model.py --url <gguf-url> --name "My model"
     python3 tools/fetch_model.py --check             # what is on disk
+
+Behind a network that blocks huggingface.co, point the script at a mirror:
+
+    HF_ENDPOINT=https://hf-mirror.com python3 tools/fetch_model.py --preset qwen-coder-1.5b
+    python3 tools/fetch_model.py --preset qwen-coder-1.5b --mirror https://hf-mirror.com
 """
 from __future__ import annotations
 
@@ -29,6 +34,30 @@ MODELS = ROOT / "models"
 MANIFEST = MODELS / "manifest.json"
 
 PRESETS = {
+    # ★ The practical pick for writing whole HTML/CSS/JS pages in a browser tab.
+    "qwen-coder-1.5b": {
+        "id": "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        "name": "Qwen2.5-Coder 1.5B Instruct",
+        "file": "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+        "parameters": "1.5B",
+        "quantization": "Q4_K_M",
+        "context": 32768,
+        "license": "Apache-2.0",
+        "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+        "note": "★ Best website-building model that still fits a browser tab. About 1.1 GB, code-specialised, 92 languages.",
+    },
+    # The quality step up, if the machine and the tab can take 2.5 GB of weights.
+    "qwen3-4b": {
+        "id": "qwen3-4b-instruct-2507-q4_k_m",
+        "name": "Qwen3 4B Instruct 2507",
+        "file": "qwen3-4b-instruct-2507-q4_k_m.gguf",
+        "parameters": "4B",
+        "quantization": "Q4_K_M",
+        "context": 262144,
+        "license": "Apache-2.0",
+        "url": "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+        "note": "Better code than the 1.5B but needs ~2.5 GB of browser memory. Desktop Chrome, 16 GB RAM.",
+    },
     "qwen-0.5b": {
         "id": "qwen2.5-0.5b-instruct-q4_k_m",
         "name": "Qwen2.5 0.5B Instruct",
@@ -49,7 +78,7 @@ PRESETS = {
         "context": 32768,
         "license": "Apache-2.0",
         "url": "https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf",
-        "note": "About 1 GB. Best quality here, but slow on a CPU and heavy in a browser tab.",
+        "note": "General-purpose 1.5B. For code and websites, qwen-coder-1.5b is the better fit.",
     },
     "llama-1b": {
         "id": "llama-3.2-1b-instruct-q4_k_m",
@@ -63,6 +92,16 @@ PRESETS = {
         "note": "About 800 MB. Good general chat model.",
     },
 }
+
+
+def apply_endpoint(url: str, endpoint: str | None) -> str:
+    """Rewrite a huggingface.co URL to a mirror host when one is requested."""
+    if not endpoint:
+        return url
+    endpoint = endpoint.rstrip("/")
+    if url.startswith("https://huggingface.co"):
+        return endpoint + url[len("https://huggingface.co"):]
+    return url
 
 
 def human(size: float) -> str:
@@ -142,7 +181,14 @@ def main() -> int:
     parser.add_argument("--file", help="file name to save as (defaults to the URL's name)")
     parser.add_argument("--list", action="store_true", dest="list_only")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument(
+        "--mirror",
+        metavar="ENDPOINT",
+        help="download from a Hugging Face mirror, e.g. https://hf-mirror.com "
+             "(HF_ENDPOINT works too)",
+    )
     args = parser.parse_args()
+    endpoint = args.mirror or os.environ.get("HF_ENDPOINT")
 
     if args.list_only:
         print("Presets:")
@@ -172,8 +218,13 @@ def main() -> int:
         }
 
     destination = MODELS / preset["file"]
+    preset["url"] = apply_endpoint(preset["url"], endpoint)
     print(f"Model:  {preset['name']}")
     print(f"Target: {destination.relative_to(ROOT)}")
+    if endpoint:
+        print(f"Mirror: {endpoint}")
+    elif "huggingface.co" in preset["url"]:
+        print("Source: huggingface.co (if this is blocked, retry with --mirror https://hf-mirror.com)")
     if destination.exists():
         print("  already downloaded — registering it instead")
     else:
