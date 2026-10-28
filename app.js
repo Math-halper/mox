@@ -39,7 +39,9 @@ const elements = {
   sourceList: $('#sourceList'), typing: $('#typingIndicator'), hint: $('#composerHint'),
   modelDot: $('#modelDot'), sidebarStatus: $('#sidebarModelStatus'),
   libraryStatus: $('#libraryStatus'), librarySummary: $('#librarySummary'), libraryChips: $('#libraryChips'),
-  libraryToggle: $('#libraryToggle'), modal: $('#modalBackdrop'), modalTitle: $('#modalTitle'),
+  libraryToggle: $('#libraryToggle'), quickStart: $('#quickStart'),
+  chatList: $('#chatList'), chatEmpty: $('#chatEmpty'),
+  modal: $('#modalBackdrop'), modalTitle: $('#modalTitle'),
   modalKicker: $('#modalKicker'), modalCopy: $('#modalCopy'), modalDone: $('#modalDone'), toast: $('#toast')
 };
 
@@ -58,6 +60,8 @@ let generating = false;
 let modelOrigin = 'site';
 let toastTimer;
 let history = [];
+const conversations = [];   // {id, title, records: [{role, text, excerpts}]}
+let activeChatId = null;
 let loadedModel = null;
 
 /* ------------------------------------------------------------------ storage */
@@ -665,19 +669,85 @@ function citationPills(excerpts) {
   return wrap;
 }
 
-function appendMessage(role, text, excerpts = []) {
+function renderMessage(role, text, excerpts = []) {
   const row = document.createElement('article');
   row.className = `message ${role}`;
-  const avatar = document.createElement('div');
-  avatar.className = 'message-avatar';
-  avatar.textContent = role === 'user' ? 'Y' : '✳';
   const body = document.createElement('div');
   body.className = 'message-body';
-  body.textContent = text;
-  row.append(avatar, body);
+  // Answers are stored as markdown-ish text, so reopening a chat looks exactly
+  // like it did while the model was streaming.
+  if (role === 'assistant' && text) body.innerHTML = renderRich(text);
+  else body.textContent = text;
+  row.append(body);
   if (excerpts.length) body.append(citationPills(excerpts));
   elements.messages.append(row);
+  return body;
+}
+
+/* ---------- conversations (the sidebar list) ---------- */
+
+function activeChat() {
+  let chat = conversations.find((entry) => entry.id === activeChatId);
+  if (!chat) {
+    chat = { id: makeId(), title: '', records: [] };
+    conversations.push(chat);
+    activeChatId = chat.id;
+  }
+  return chat;
+}
+
+function chatTitle(chat) {
+  const first = chat.records.find((record) => record.role === 'user');
+  if (!first) return 'New chat';
+  const text = first.text.replace(/\s+/g, ' ').trim();
+  return text.length > 48 ? `${text.slice(0, 47)}…` : text;
+}
+
+function renderChatList() {
+  elements.chatList.textContent = '';
+  const started = conversations.filter((chat) => chat.records.length);
+  elements.chatEmpty.hidden = started.length > 0;
+  for (const chat of started.slice().reverse()) {
+    const entry = document.createElement('button');
+    entry.className = `chat-entry${chat.id === activeChatId ? ' active' : ''}`;
+    entry.textContent = chatTitle(chat);
+    entry.title = chatTitle(chat);
+    entry.addEventListener('click', () => openConversation(chat.id));
+    elements.chatList.append(entry);
+  }
+}
+
+function openConversation(id) {
+  const chat = conversations.find((entry) => entry.id === id);
+  if (!chat || generating) return;
+  activeChatId = chat.id;
+  elements.messages.textContent = '';
+  for (const record of chat.records) renderMessage(record.role, record.text, record.excerpts || []);
+  const empty = chat.records.length === 0;
+  elements.welcome.hidden = !empty;
+  elements.quickStart.hidden = !empty;
+  history = chatRecordsToHistory(chat);
+  renderChatList();
+  updateComposer();
+  elements.conversation.scrollTop = elements.conversation.scrollHeight;
+}
+
+function chatRecordsToHistory(chat) {
+  return chat.records.slice(-4).map((record) => ({
+    role: record.role,
+    content: record.text.slice(0, 600)
+  }));
+}
+
+function appendMessage(role, text, excerpts = []) {
+  const body = renderMessage(role, text, excerpts);
+  const chat = activeChat();
+  const record = { role, text, excerpts };
+  chat.records.push(record);
+  body.__moxRecord = record;
   elements.welcome.hidden = true;
+  elements.quickStart.hidden = true;
+  renderChatList();
   elements.conversation.scrollTop = elements.conversation.scrollHeight;
   return body;
 }
@@ -748,6 +818,7 @@ async function handleSubmit(event) {
       if (!final || final.length < 2) throw new Error('Empty response');
       body.innerHTML = renderRich(final);
       if (excerpts.length) body.append(citationPills(excerpts));
+      if (body.__moxRecord) body.__moxRecord.text = final;
       history.push({ role: 'user', content: question.slice(0, 600) });
       history.push({ role: 'assistant', content: final.slice(0, 600) });
       history = history.slice(-4);
@@ -755,6 +826,8 @@ async function handleSubmit(event) {
       console.error('Inference failed:', error);
       cursor.remove();
       body.closest('.message')?.remove();
+      const chat = activeChat();
+      if (body.__moxRecord) chat.records = chat.records.filter((record) => record !== body.__moxRecord);
       appendMessage('assistant', fallbackAnswer(excerpts), excerpts);
       showToast('The model could not answer; showing matching passages instead.');
     } finally {
@@ -770,12 +843,17 @@ async function handleSubmit(event) {
 }
 
 function resetChat() {
-  elements.messages.innerHTML = '';
+  elements.messages.textContent = '';
   elements.welcome.hidden = false;
+  elements.quickStart.hidden = false;
   elements.input.value = '';
   elements.input.style.height = 'auto';
   history = [];
+  activeChatId = null;
+  activeChat();
+  renderChatList();
   updateComposer();
+  elements.input.focus();
 }
 
 /* ------------------------------------------------------------------ import */
@@ -933,6 +1011,7 @@ elements.input.addEventListener('keydown', (event) => {
   }
 });
 $('#newChat').addEventListener('click', resetChat);
+$('#modelMenu').addEventListener('click', () => openModal('settings'));
 $('#quickAsk').addEventListener('click', () => {
   elements.input.focus();
   if (!modelReady && !searchOnly) showToast('The model is still loading — one moment.');
