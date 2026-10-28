@@ -184,6 +184,7 @@ await wait(60);
 check('models: uploaded model appears on the screen', document.querySelector('#modalCopy').textContent.includes('Qwen2.5 0.5B Instruct'));
 check('models: uploaded model is marked as yours', document.querySelector('#modalCopy').textContent.includes('your upload'));
 check('models: uploaded model can be removed', Boolean(document.querySelector('[data-remove-model]')));
+check('models: recommends a website-building model', /Qwen2\.5-Coder 1\.5B/.test(document.querySelector('#modalCopy').textContent));
 document.querySelector('#modalDone').dispatchEvent(new window.Event('click', { bubbles: true }));
 
 /* ------------------------------------------------------------------ models */

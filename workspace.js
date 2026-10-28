@@ -832,7 +832,9 @@ async function askWorkspace(instruction) {
         'You are Mox, a coding assistant working inside a browser workspace.',
         'The user sees three panes: files, an editor, and a live preview of index.html.',
         'Change files only through mox:write blocks; always return the complete file.',
-        'Keep the existing design and code that already works. Keep answers short.',
+        'Never write placeholders such as "// rest of the code" or "<!-- more -->": the whole file must be runnable.',
+        'Keep the existing design and working code; make the smallest set of changes that fulfils the request.',
+        'Reply with the file blocks and at most two sentences of explanation.',
         WORKSPACE_TOOL_INSTRUCTIONS,
         '',
         'WORKSPACE FILES:',
@@ -851,7 +853,7 @@ async function askWorkspace(instruction) {
   try {
     state.aiAbort = new AbortController();
     const result = await state.hooks.complete(messages, {
-      maxTokens: 700,
+      maxTokens: 1000,
       temperature: 0.25,
       signal: state.aiAbort.signal,
       onToken: (token) => {

@@ -100,8 +100,28 @@ The script saves the GGUF into `models/` and registers it in `models/manifest.js
 Reload the page, open **Model & settings**, and pick it. You can also load any `.gguf`
 chat model straight from your computer with **Load a .gguf from this computer**.
 
-Presets: Qwen2.5 0.5B and 1.5B Instruct, Llama 3.2 1B Instruct. Extra weights are
-git-ignored; only the bundled 135M model is committed.
+Presets: Qwen2.5-Coder 1.5B, Qwen3 4B Instruct 2507, Qwen2.5 0.5B and 1.5B Instruct,
+Llama 3.2 1B Instruct. Extra weights are git-ignored; only the bundled 135M model is
+committed.
+
+### Which model should build websites?
+
+| Model | Download | Why |
+| --- | --- | --- |
+| **Qwen2.5-Coder 1.5B Instruct** (Q4_K_M) | ~1.1 GB | The best fit for this app. Code-specialised, 92 languages, Apache-2.0, 32k context, and small enough that a browser tab can hold the weights and still generate at a usable speed. Start here. |
+| Qwen3 4B Instruct 2507 (Q4_K_M) | ~2.5 GB | Noticeably better at multi-file, modern HTML/CSS/JS. Needs desktop Chrome and roughly 8 GB of free RAM for the tab; slower per token. |
+| Qwen2.5 7B Instruct / Qwen2.5-Coder 7B (Q4) | ~4.7 GB | Better still, but too big for a tab to load reliably. Serve it locally with llama.cpp or Ollama and use the app for everything else. |
+| the bundled SmolLM2 135M | 94 MB | Fine for chat and summarizing; too small to write a whole page on its own. |
+
+```sh
+python3 tools/fetch_model.py --preset qwen-coder-1.5b   # recommended
+python3 tools/fetch_model.py --preset qwen3-4b          # better code, heavier
+```
+
+Both also work without the script: download the `.gguf` from Hugging Face and use
+**Model & settings → Upload a .gguf**. Treat a browser model as a fast first draft
+that you check — the workspace preview, console, and Apply/Undo make that check
+cheap.
 
 ## The knowledge library
 

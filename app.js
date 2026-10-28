@@ -663,6 +663,9 @@ async function startModel({ auto = false } = {}) {
     loadedModel = model;
     elements.modelName.textContent = describeModel();
     elements.modelSize.textContent = displaySize(model.bytes);
+    if (model.bytes > 1.5e9) {
+      showToast(`${model.name} is ${displaySize(model.bytes)} — large for a browser tab. If it fails to load, try Qwen2.5-Coder 1.5B.`);
+    }
 
     // 1. Get the weights: from this site, or from the model you uploaded.
     let blob;
@@ -1617,7 +1620,7 @@ function modelListMarkup({ manage = false } = {}) {
     <div class="model-choice${entry.id === chosenModelId ? ' active' : ''}">
       <button type="button" class="model-choice-pick" data-model="${escapeHTML(entry.id)}">
         <span class="model-choice-name">${escapeHTML(entry.name)}${entry.bundled ? ' <em>bundled</em>' : ''}${entry.uploaded ? ' <em>your upload</em>' : ''}</span>
-        <span class="model-choice-meta">${escapeHTML([entry.parameters, entry.quantization, displaySize(entry.bytes), entry.license].filter(Boolean).join(' · '))}</span>
+        <span class="model-choice-meta">${escapeHTML([entry.parameters, entry.quantization, displaySize(entry.bytes), entry.license].filter(Boolean).join(' · '))}${entry.bytes > 1.5e9 ? ' · heavy for a tab' : ''}</span>
         ${entry.note ? `<span class="model-choice-note">${escapeHTML(entry.note)}</span>` : ''}
       </button>
       ${manage && entry.uploaded ? `<button type="button" class="model-choice-remove" data-remove-model="${escapeHTML(entry.id)}" title="Remove ${escapeHTML(entry.name)} from this browser">Remove</button>` : ''}
@@ -1635,6 +1638,7 @@ function modelScreenMarkup() {
     </div>
     <p class="model-storage-line" id="modelStorage">Models are stored on this device only.</p>
     <p><strong>Uploaded models</strong> <span id="uploadCount">none uploaded</span></p>
+    <p class="model-tip"><strong>Building websites?</strong> <code>Qwen2.5-Coder 1.5B</code> is the best fit that still runs comfortably in a tab — <code>python3 tools/fetch_model.py --preset qwen-coder-1.5b</code>, or download its <code>.gguf</code> and upload it here. <code>Qwen3 4B Instruct</code> writes better code but needs about 2.5 GB of browser memory.</p>
     <p><strong>Upgrade without uploading:</strong> run <code>python3 tools/fetch_model.py --preset qwen-0.5b</code> and add the file to <code>models/manifest.json</code>. Larger models answer better, slower.</p>
     <p><strong>Knowledge library:</strong> ${libraryDocuments.length} documents across ${new Set(libraryDocuments.map((doc) => doc.categoryLabel)).size} topics, indexed in your browser.<br>
     <strong>Your files:</strong> ${userDocuments.length} imported document${userDocuments.length === 1 ? '' : 's'} in IndexedDB.<br>

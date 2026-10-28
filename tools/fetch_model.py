@@ -29,6 +29,30 @@ MODELS = ROOT / "models"
 MANIFEST = MODELS / "manifest.json"
 
 PRESETS = {
+    # ★ The practical pick for writing whole HTML/CSS/JS pages in a browser tab.
+    "qwen-coder-1.5b": {
+        "id": "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        "name": "Qwen2.5-Coder 1.5B Instruct",
+        "file": "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+        "parameters": "1.5B",
+        "quantization": "Q4_K_M",
+        "context": 32768,
+        "license": "Apache-2.0",
+        "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+        "note": "★ Best website-building model that still fits a browser tab. About 1.1 GB, code-specialised, 92 languages.",
+    },
+    # The quality step up, if the machine and the tab can take 2.5 GB of weights.
+    "qwen3-4b": {
+        "id": "qwen3-4b-instruct-2507-q4_k_m",
+        "name": "Qwen3 4B Instruct 2507",
+        "file": "qwen3-4b-instruct-2507-q4_k_m.gguf",
+        "parameters": "4B",
+        "quantization": "Q4_K_M",
+        "context": 262144,
+        "license": "Apache-2.0",
+        "url": "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+        "note": "Better code than the 1.5B but needs ~2.5 GB of browser memory. Desktop Chrome, 16 GB RAM.",
+    },
     "qwen-0.5b": {
         "id": "qwen2.5-0.5b-instruct-q4_k_m",
         "name": "Qwen2.5 0.5B Instruct",
@@ -49,7 +73,7 @@ PRESETS = {
         "context": 32768,
         "license": "Apache-2.0",
         "url": "https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf",
-        "note": "About 1 GB. Best quality here, but slow on a CPU and heavy in a browser tab.",
+        "note": "General-purpose 1.5B. For code and websites, qwen-coder-1.5b is the better fit.",
     },
     "llama-1b": {
         "id": "llama-3.2-1b-instruct-q4_k_m",

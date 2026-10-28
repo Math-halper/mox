@@ -55,6 +55,19 @@ IndexedDB, appear in the same picker marked *your upload*, and survive reloads u
 you remove them. They are never sent anywhere. Keep uploads to a few hundred MB: the
 browser's storage quota and the tab's memory are the limit, not git.
 
+## Which model to add for code
+
+For building websites in this app, `Qwen2.5-Coder-1.5B-Instruct` at Q4_K_M (about
+1.1 GB) is the sweet spot: code-specialised, Apache-2.0, 32k context, and small
+enough for a browser tab. `Qwen3-4B-Instruct-2507` (Q4_K_M, about 2.5 GB) is the
+next step up if the machine has the memory. Anything at 7B and above (about 4.7 GB)
+should be run by llama.cpp or Ollama outside the tab.
+
+```sh
+python3 tools/fetch_model.py --preset qwen-coder-1.5b
+python3 tools/fetch_model.py --preset qwen3-4b
+```
+
 ## Why only one file is in git
 
 GitHub rejects files above 100 MB, and weight binaries bloat a repository. The bundled
