@@ -5,18 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0a0a0f">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="UFY Dark — a private AI workspace that runs a language model in your browser and answers from the knowledge on this site.">
-  <title>UFY Dark — your private AI workspace</title>
+  <meta name="description" content="Mox is a private AI workspace that runs a bundled language model in your browser and answers from the knowledge built into this site.">
+  <title>Mox — your private AI workspace</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="aurora" aria-hidden="true"></div>
   <div class="app-shell">
     <aside class="sidebar" aria-label="Workspace">
-      <a class="brand" href="#" aria-label="UFY home">
-        <span class="brand-mark">u<span>f</span></span>
-        <span class="brand-name">ufy<span class="brand-period">.</span></span>
-        <span class="brand-tag">dark</span>
+      <a class="brand" href="#" aria-label="Mox home">
+        <span class="brand-mark">m<span>o</span></span>
+        <span class="brand-name">mox<span class="brand-period">.</span></span>
+        <span class="brand-tag">local</span>
       </a>
 
       <button class="new-chat" id="newChat"><span class="plus">＋</span> New conversation <kbd>⌘K</kbd></button>
@@ -24,7 +24,7 @@
       <div class="side-label">YOUR WORKSPACE</div>
       <div class="workspace-card">
         <div class="workspace-icon">✳</div>
-        <div><strong>Personal workspace</strong><span>Private on this device</span></div>
+        <div><strong>Personal workspace</strong><span>Model + files on this device</span></div>
         <span class="lock-icon" title="Your data stays in this browser">⌑</span>
       </div>
 
@@ -45,7 +45,7 @@
 
       <div class="sources-heading"><span class="side-label">YOUR FILES</span><button id="addFilesSmall" class="icon-button" title="Add files" aria-label="Add files">＋</button></div>
       <div id="sourceList" class="source-list">
-        <div class="empty-sources"><span class="folder-art">▱</span><span>No files added yet</span><small>Add a folder to give UFY more context</small></div>
+        <div class="empty-sources"><span class="folder-art">▱</span><span>No files added yet</span><small>Add a folder to give Mox more context</small></div>
       </div>
 
       <button class="add-folder" id="addFolder"><span>＋</span> Add a folder</button>
@@ -54,7 +54,7 @@
       <div class="sidebar-bottom">
         <div class="privacy-note"><span class="privacy-dot"></span><div><strong>Your files stay yours</strong><span>Processed on this device</span></div></div>
         <button class="settings-link" id="settingsButton"><span>⚙</span> Model &amp; settings <span class="chevron">›</span></button>
-        <div class="version-line"><span class="status-dot" id="modelDot"></span><span id="sidebarModelStatus">Model not started</span></div>
+        <div class="version-line"><span class="status-dot" id="modelDot"></span><span id="sidebarModelStatus">Loading model…</span></div>
       </div>
     </aside>
 
@@ -74,22 +74,22 @@
         <div class="welcome" id="welcome">
           <div class="welcome-eyebrow"><span class="sparkle">✳</span> YOUR AI. YOUR DEVICE. YOUR DATA.</div>
           <h1>Dark mode.<br><em>Light footprint.</em></h1>
-          <p class="welcome-copy">A private AI that runs in this browser, with a knowledge library<br>built into the site — math, reading, technology, and more.</p>
+          <p class="welcome-copy">A private AI that runs in this browser, with a real model<br>and a knowledge library built into the site.</p>
 
           <div class="model-card" id="modelCard">
             <div class="model-card-icon"><span class="model-orbit">✳</span></div>
             <div class="model-card-content">
               <div class="model-card-top">
-                <div><span class="model-label">ON-DEVICE MODEL</span><h2 id="modelCardTitle">Starting the engine</h2></div>
+                <div><span class="model-label">ON-DEVICE MODEL</span><h2 id="modelCardTitle">Loading the bundled model</h2><span class="model-file" id="modelName">reading manifest…</span></div>
                 <span class="model-size" id="modelSize">~400 MB</span>
               </div>
-              <p id="modelCardDescription">The model is served by this website and cached by your browser. Nothing is uploaded; prompts never leave this device.</p>
+              <p id="modelCardDescription">The weights live in <code>models/</code> on this site, so nothing is downloaded from a model host. Everything runs on your device.</p>
               <div class="download-progress" id="downloadProgress" hidden>
                 <div class="progress-track"><div id="progressBar" class="progress-fill"></div></div>
                 <div class="progress-meta"><span id="progressLabel">Preparing model…</span><span id="progressPercent">0%</span></div>
               </div>
               <button class="load-model-button" id="loadModel"><span class="button-sparkle">✳</span> Start the model <span class="button-arrow">↗</span></button>
-              <div class="model-footnote" id="modelFootnote"><span>◉</span> WebGPU when available · CPU fallback · offline after first load</div>
+              <div class="model-footnote" id="modelFootnote"><span>◉</span> Runs on llama.cpp / WebAssembly · offline after the first load</div>
             </div>
           </div>
 
@@ -102,7 +102,7 @@
               <button class="quick-card" id="quickPrivacy"><span class="quick-icon lock-icon-q">⌑</span><span><strong>How privacy works</strong><small>No account, no server, no upload</small></span><span class="quick-arrow">↗</span></button>
             </div>
           </div>
-          <div class="fine-print">Questions, files, and answers stay on this device. <button id="privacyLink">How it works</button></div>
+          <div class="fine-print">Model, questions, and files stay on this device. <button id="privacyLink">How it works</button></div>
         </div>
 
         <div id="messages" class="messages" aria-live="polite"></div>
@@ -111,20 +111,21 @@
 
       <footer class="composer-wrap">
         <form class="composer" id="chatForm">
-          <textarea id="messageInput" rows="1" placeholder="Ask about algebra, the web, or anything in the library…" aria-label="Message UFY" disabled></textarea>
+          <textarea id="messageInput" rows="1" placeholder="Ask about algebra, the web, or anything in the library…" aria-label="Message Mox" disabled></textarea>
           <div class="composer-tools">
             <button type="button" id="attachButton" class="composer-attach" title="Add files">＋</button>
             <span id="composerHint">Starting the local model…</span>
             <button class="send-button" id="sendButton" type="submit" aria-label="Send message" disabled>↑</button>
           </div>
         </form>
-        <div class="composer-caption">UFY runs a ~0.5B parameter model locally. Check important details against a source.</div>
+        <div class="composer-caption">Mox runs a small bundled model locally. Check important details against a source.</div>
       </footer>
     </main>
   </div>
 
   <input id="filePicker" type="file" multiple hidden accept=".txt,.md,.markdown,.csv,.json,.html,.htm,.xml,.yaml,.yml,.log,.pdf">
   <input id="folderPicker" type="file" multiple webkitdirectory directory hidden>
+  <input id="modelPicker" type="file" accept=".gguf" hidden>
 
   <div class="modal-backdrop" id="modalBackdrop" hidden>
     <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">

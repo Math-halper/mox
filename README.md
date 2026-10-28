@@ -1,18 +1,17 @@
-# UFY Dark
+# Mox
 
-A private, local-first AI workspace that runs a language model inside your browser
-and answers from a knowledge library built into the site.
+A private AI workspace that runs a **real language model in your browser** and answers
+from a knowledge library built into the site.
 
-This repository is a copy of [UFY](https://github.com/Math-halper/UFY) with three
-changes:
+Originally a copy of [UFY](https://github.com/Math-halper/UFY), rebuilt as Mox with a
+dark theme, a model that ships with the app, and a substantial knowledge library.
 
-1. **Dark mode** everywhere — a dark-first theme with no web-font or CDN dependency.
-2. **The model lives on the website.** The inference runtime is vendored in
-   `vendor/`, and model weights can be served from `models/` by the same site that
-   serves the page, so nothing is downloaded from a third-party model host.
-3. **A real knowledge library.** `knowledge/` now holds 29 documents (~18,000 words)
-   on mathematics, reading and writing, technology, science, humanities, and life
-   skills, indexed automatically on startup.
+- **The model is included.** `models/smollm2-135m-instruct-q4_1.gguf` (94 MB,
+  Apache-2.0) is served by this same website and executed by llama.cpp compiled to
+  WebAssembly. No Hugging Face download, no API key, no server.
+- **Dark by default.** A dark-first interface with no web fonts and no CDN assets.
+- **Knowledge included.** 28 documents (~18,000 words) on math, reading and writing,
+  technology, science, humanities, and life skills, indexed in the browser.
 
 ## Run it
 
@@ -20,40 +19,38 @@ changes:
 python3 run.py
 ```
 
-Then open the address it prints (usually <http://localhost:8000>). No pip packages,
-accounts, or API keys. `start-ufy.command` (macOS/Linux) and `start-ufy.bat`
-(Windows) do the same thing.
+Open the address it prints (usually <http://localhost:8000>) and the bundled model
+starts loading automatically. `start-mox.command` (macOS/Linux) and `start-mox.bat`
+(Windows) do the same. No pip packages, accounts, or API keys.
 
-The model starts loading on page load. Keep the tab open until it finishes: the
-first run downloads the weights into browser storage, later runs reuse them.
+## The model
 
-## Put the model on the site
+| | |
+| --- | --- |
+| Model | SmolLM2 135M Instruct (`HuggingFaceTB`), Q4_1 quantization |
+| Size | 94 MB, one file, committed to this repository |
+| Runtime | [wllama](https://github.com/ngxson/wllama) 3.8.1 — llama.cpp in WebAssembly, vendored in `vendor/wllama/` |
+| Context | 4,096 tokens per session (the model supports 8,192) |
+| License | Apache-2.0 |
 
-The app checks `models/onnx-community/Qwen2.5-0.5B-Instruct/config.json` first.
+It loads from `models/` through `models/manifest.json`, so the weights never leave this
+site. On a typical laptop it generates a few tokens per second on the CPU — quick for
+short answers, slow for essays.
+
+### Swapping in a bigger model
 
 ```sh
-python3 tools/fetch_model.py          # download the ONNX files into ./models (~400 MB)
-python3 tools/fetch_model.py --check  # show what is already there
+python3 tools/fetch_model.py --list               # presets
+python3 tools/fetch_model.py --preset qwen-0.5b   # ~400 MB, better answers
+python3 tools/fetch_model.py --check              # what is on disk
 ```
 
-With the files present, the browser loads the model straight from this website — no
-request to Hugging Face — and the top bar reads **model on this site**. Without them,
-the app falls back to fetching weights from Hugging Face once and caching them, so a
-fresh clone still works.
+The script saves the GGUF into `models/` and registers it in `models/manifest.json`.
+Reload the page, open **Model & settings**, and pick it. You can also load any `.gguf`
+chat model straight from your computer with **Load a .gguf from this computer**.
 
-Weight binaries are ignored by `.gitignore`; keep them on the machine that serves the
-site, or host `models/` from a static file service alongside the app.
-
-### What is vendored
-
-| Path | Contents | Source |
-| --- | --- | --- |
-| `vendor/transformers/` | Transformers.js browser bundle, 3.7.2 | `@huggingface/transformers` (Apache-2.0) |
-| `vendor/ort/` | ONNX Runtime Web WASM + loader, jsep build | `onnxruntime-web` 1.22.0-dev (MIT) |
-| `vendor/pdfjs/` | PDF.js 4.10.38 + worker | `pdfjs-dist` (Apache-2.0) |
-
-The app points the runtime at these local files (`env.backends.onnx.wasm.wasmPaths`
-and `env.localModelPath`), so a first load does not depend on jsDelivr for the engine.
+Presets: Qwen2.5 0.5B and 1.5B Instruct, Llama 3.2 1B Instruct. Extra weights are
+git-ignored; only the bundled 135M model is committed.
 
 ## The knowledge library
 
@@ -61,56 +58,69 @@ and `env.localModelPath`), so a first load does not depend on jsDelivr for the e
 knowledge/
 ├── index.json          generated manifest the app fetches at startup
 ├── README.md           how the library works and how to extend it
-├── math/               6 documents — arithmetic, algebra, geometry, calculus, statistics, formulas
-├── reading/            5 documents — comprehension, grammar, vocabulary, style, literature
-├── technology/         6 documents — computers, web, programming, AI, security, data
-├── science/            4 documents — physics, chemistry, biology + Earth, astronomy
-├── humanities/         3 documents — history, geography and culture, philosophy
-└── life/               3 documents — health, money, study skills
+├── math/               6 — arithmetic, algebra, geometry, calculus, statistics, formulas
+├── reading/            5 — comprehension, grammar, vocabulary, style, literature
+├── technology/         6 — computers, web, programming, AI, security, data
+├── science/            4 — physics, chemistry, biology + Earth, astronomy
+├── humanities/         3 — history, geography and culture, philosophy
+└── life/               3 — health, money, study skills
 ```
 
-Add a file, then:
+Add a file, then rebuild the manifest:
 
 ```sh
 python3 tools/build_knowledge_index.py
 ```
 
-Your own documents can also be imported at runtime with **Add a folder** / **Add
-files**; they live in the browser's IndexedDB, not in the repository.
+You can also import your own documents at runtime with **Add a folder** / **Add files**
+(stored in the browser's IndexedDB, never uploaded).
 
-Retrieval is lexical: each document is split into ~1,000-character passages, scored
-with a TF-IDF-style term score plus title and exact-phrase bonuses, and the best five
-passages are inserted into the prompt. Answers cite the documents used, and
-`knowledge/` files are never uploaded anywhere.
+Retrieval is lexical: each document is split into ~800-character passages, scored with an
+IDF-weighted term score plus title and exact-phrase bonuses, and the best passages are
+inserted into the prompt as sources. Answers cite the documents used.
 
-## Project files
+## What you get in the UI
 
-- `index.html`, `styles.css`, `app.js` — the browser app (dark theme, streaming answers)
-- `knowledge/` — bundled library + `index.json` manifest
-- `models/` — model weights (optional, git-ignored) served by this site
-- `vendor/` — inference runtime and PDF reader served locally
-- `tools/fetch_model.py` — downloads ONNX weights into `models/`
-- `tools/build_knowledge_index.py` — rebuilds `knowledge/index.json`
-- `run.py` — dependency-free static server (correct MIME types for `.wasm`/`.mjs`)
+- **Streaming answers** from the local model, with source pills under each reply.
+- **Search-only mode:** if the model cannot start, questions still return the matching
+  passages instead of failing.
+- **Knowledge toggle** in the sidebar, plus a browsable library by topic.
+- **Model panel** listing every model found on disk, with a picker and a `.gguf` upload.
+- **Dark theme** throughout, responsive down to phone widths.
 
-## How it works
+## Project layout
 
-- **Model:** Qwen2.5 0.5B Instruct in ONNX, 4-bit quantized, run by Transformers.js
-  with WebGPU when available and a WebAssembly CPU fallback otherwise.
-- **Context:** each question retrieves library passages, which are passed to the model
-  with instructions to answer from them and name the file. If the model cannot start,
-  the app switches to search-only mode and shows the matching passages directly.
-- **Privacy:** prompts and documents stay in the browser. The only network requests are
-  for this site's own files and, if no local weights exist, the model download.
-- **Storage:** imported files, the library cache, and model weights use IndexedDB and
-  the browser cache. Clearing site data removes them.
+- `index.html`, `styles.css`, `app.js` — the browser app
+- `models/` — `manifest.json` + the bundled GGUF (extra models git-ignored)
+- `knowledge/` — the library and its generated `index.json`
+- `vendor/wllama/` — llama.cpp WebAssembly runtime (MIT)
+- `vendor/pdfjs/` — PDF text extraction for imports (Apache-2.0)
+- `tools/fetch_model.py` — download extra GGUF models into `models/`
+- `tools/build_knowledge_index.py` — rebuild `knowledge/index.json`
+- `tools/check_site.py` — verify assets, ids, manifest and knowledge integrity
+- `run.py` — dependency-free static server with correct `.wasm` / `.mjs` / `.gguf` MIME types
 
-## Notes
+## Privacy
 
-- Best in a recent Chrome, Edge, or Firefox. WebGPU support varies by browser.
-- Files above 12 MB are skipped; supported formats are PDF, TXT, Markdown, CSV, JSON,
-  HTML, XML, YAML, and LOG.
-- A 0.5B model is small. It is useful for summarizing and explaining retrieved
-  passages, not for reliable recall of facts outside them.
-- `UFY_ISOLATE=1 python3 run.py` enables cross-origin isolation, which allows the
-  WebAssembly backend to use multiple threads.
+The page, the model, and the library are served from this folder. Questions, imported
+files, and retrieved passages stay in the browser; there is no inference server and no
+telemetry. Imported files, the library cache, and the browser's copy of the model live in
+IndexedDB and the Cache API, and clearing site data removes them.
+
+## Notes and limits
+
+- Best in a recent Chrome, Edge, or Firefox. Older browsers without JSPI/threaded
+  WebAssembly fall back to wllama's compatibility build; install
+  `@wllama/wllama-compat` and pass it to `setCompat()` if you need that path offline.
+- A 135M model is small: it summarizes and explains retrieved passages well, and is
+  unreliable for facts outside them. The passages are the authority.
+- Imported files above 12 MB are skipped. Supported formats: PDF, TXT, Markdown, CSV,
+  JSON, HTML, XML, YAML, LOG.
+- `MOX_ISOLATE=1 python3 run.py` enables cross-origin isolation (multithreaded WASM);
+  `MOX_PORT` and `MOX_HOST` change the bind address.
+
+## Licenses
+
+The bundled model is Apache-2.0 (`HuggingFaceTB/SmolLM2-135M-Instruct`). wllama is MIT;
+wllama embeds llama.cpp (MIT). PDF.js is Apache-2.0. Knowledge documents in this
+repository are original text written for this project.

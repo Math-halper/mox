@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "default": "smollm2-135m-instruct-q4_1",
+  "models": [
+    {
+      "id": "smollm2-135m-instruct-q4_1",
+      "name": "SmolLM2 135M Instruct",
+      "file": "smollm2-135m-instruct-q4_1.gguf",
+      "bytes": 98362432,
+      "parameters": "135M",
+      "quantization": "Q4_1",
+      "context": 8192,
+      "license": "Apache-2.0",
+      "bundled": true,
+      "note": "Ships with this site. Runs fully offline in the browser."
+    }
+  ]
+}

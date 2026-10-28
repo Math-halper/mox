@@ -1,30 +1,31 @@
-// UFY Dark — a local-first AI workspace.
-// The model runtime is served by this site (vendor/), the model weights are
-// served by this site too when models/<modelId>/ exists, with a Hugging Face
-// fallback. The knowledge library in knowledge/ is indexed in the browser.
+// Mox — a local-first AI workspace.
+// The model ships with this site (models/*.gguf) and runs in the browser through
+// wllama (llama.cpp compiled to WebAssembly). The knowledge library in
+// knowledge/ is indexed locally and retrieved for every question.
 
-const MODEL_ID = 'onnx-community/Qwen2.5-0.5B-Instruct';
-const RUNTIME_URL = new URL('vendor/transformers/transformers.min.js', import.meta.url).href;
-const ORT_PATH = new URL('vendor/ort/', import.meta.url).href;
-const LOCAL_MODEL_PATH = new URL('models/', import.meta.url).href;
+const WLLAMA_URL = new URL('vendor/wllama/wllama.js', import.meta.url).href;
+const WLLAMA_BASE = new URL('vendor/wllama/', import.meta.url).href;
+const WLLAMA_WASM = new URL('vendor/wllama/wllama.wasm', import.meta.url).href;
+const MODEL_MANIFEST = 'models/manifest.json';
 const PDFJS_URL = new URL('vendor/pdfjs/pdf.min.mjs', import.meta.url).href;
 const PDFJS_WORKER_URL = new URL('vendor/pdfjs/pdf.worker.min.mjs', import.meta.url).href;
 const KNOWLEDGE_INDEX = 'knowledge/index.json';
 
-const DB_NAME = 'ufy-private-workspace';
+const DB_NAME = 'mox-private-workspace';
 const DB_VERSION = 2;
 const MAX_FILE_BYTES = 12 * 1024 * 1024;
-const MAX_EXCERPTS = 5;
-const MAX_TOKENS = 340;
+const MAX_EXCERPTS = 4;
+const MAX_NEW_TOKENS = 220;
+const CONTEXT_SIZE = 4096;
 
 const STOP_WORDS = new Set(
   ('a an the and or but if then else when where why how what who whom which this that these those is are was were be been ' +
    'being do does did have has had can could should would will may might must of to in on at by for from with about as ' +
    'into through during before after above below between out off over under again further once it its i me my we our you ' +
    'your he she they them his her their not no nor so than too very please tell explain describe give show define mean ' +
-   'meaning some any more most other such only own same s t just difference differences between work works working used ' +
-   'use using need needs want wants get gets make makes made thing things example examples question questions answer ' +
-   'answers best better good important main kind kinds type types way ways also like many much amount around instead').split(' ')
+   'meaning some any more most other such only own same s t just between work works working used use using need needs ' +
+   'want wants get gets make makes made thing things example examples question questions answer answers best better ' +
+   'good way ways also like many much amount around instead').split(' ')
 );
 
 const $ = (selector) => document.querySelector(selector);
@@ -32,9 +33,10 @@ const elements = {
   welcome: $('#welcome'), messages: $('#messages'), conversation: $('#conversation'),
   input: $('#messageInput'), form: $('#chatForm'), send: $('#sendButton'),
   load: $('#loadModel'), modelTitle: $('#modelCardTitle'), modelDescription: $('#modelCardDescription'),
-  modelSize: $('#modelSize'), progress: $('#downloadProgress'), progressBar: $('#progressBar'),
-  progressLabel: $('#progressLabel'), progressPercent: $('#progressPercent'), modelFootnote: $('#modelFootnote'),
-  sourceBadge: $('#sourceBadge'), filePicker: $('#filePicker'), folderPicker: $('#folderPicker'),
+  modelSize: $('#modelSize'), modelName: $('#modelName'), progress: $('#downloadProgress'),
+  progressBar: $('#progressBar'), progressLabel: $('#progressLabel'), progressPercent: $('#progressPercent'),
+  modelFootnote: $('#modelFootnote'), sourceBadge: $('#sourceBadge'),
+  filePicker: $('#filePicker'), folderPicker: $('#folderPicker'), modelPicker: $('#modelPicker'),
   sourceList: $('#sourceList'), typing: $('#typingIndicator'), hint: $('#composerHint'),
   modelDot: $('#modelDot'), sidebarStatus: $('#sidebarModelStatus'),
   libraryStatus: $('#libraryStatus'), librarySummary: $('#librarySummary'), libraryChips: $('#libraryChips'),
@@ -47,15 +49,17 @@ let userDocuments = [];
 let libraryDocuments = [];
 let libraryIndex = null;
 let libraryEnabled = true;
-let textGenerator = null;
-let streamerClass = null;
+let modelManifest = null;
+let chosenModelId = null;
+let llm = null;
+let engine = null;               // 'webgpu' | 'wasm' (wllama reports its backend)
 let modelReady = false;
 let searchOnly = false;
 let generating = false;
-let deviceName = 'cpu';
-let modelOrigin = 'unknown';
+let modelOrigin = 'site';
 let toastTimer;
 let history = [];
+let loadedModel = null;
 
 /* ------------------------------------------------------------------ storage */
 
@@ -122,7 +126,7 @@ function tokenize(value) {
 function makeChunks(text) {
   const normalized = text.replace(/\r/g, '').replace(/[\t ]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
   if (!normalized) return [];
-  const size = 1000, overlap = 140, chunks = [];
+  const size = 800, overlap = 120, chunks = [];
   let start = 0;
   while (start < normalized.length) {
     let end = Math.min(start + size, normalized.length);
@@ -173,15 +177,11 @@ function displaySize(bytes) {
 }
 function renderRich(text) {
   return escapeHTML(text).split('\n').map((line) => {
-    let value = line
+    const value = line
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
       .replace(/`([^`]+)`/g, '<code>$1</code>');
-    if (/^\s*#{1,6}\s+/.test(value)) {
-      return `<span class="md-heading">${value.replace(/^\s*#{1,6}\s+/, '')}</span>`;
-    }
-    if (/^\s*[-*•]\s+/.test(value)) {
-      return `<span class="md-bullet">${value.replace(/^\s*[-*•]\s+/, '')}</span>`;
-    }
+    if (/^\s*#{1,6}\s+/.test(value)) return `<span class="md-heading">${value.replace(/^\s*#{1,6}\s+/, '')}</span>`;
+    if (/^\s*[-*•]\s+/.test(value)) return `<span class="md-bullet">${value.replace(/^\s*[-*•]\s+/, '')}</span>`;
     return value;
   }).join('\n');
 }
@@ -192,7 +192,7 @@ function showToast(message) {
   elements.toast.textContent = message;
   elements.toast.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => elements.toast.classList.remove('show'), 3600);
+  toastTimer = setTimeout(() => elements.toast.classList.remove('show'), 3800);
 }
 
 /* --------------------------------------------------------------- knowledge */
@@ -217,15 +217,12 @@ async function loadKnowledgeLibrary() {
     if (!response.ok) throw new Error(`knowledge index ${response.status}`);
     libraryIndex = await response.json();
     const documents = libraryIndex.documents || [];
-    elements.librarySummary.textContent = `${documents.length} documents bundled with this site`;
 
     const cached = await readMeta('libraryCache');
-    let texts = null;
-    if (cached && cached.generated === libraryIndex.generated) texts = cached.texts;
+    let texts = cached && cached.generated === libraryIndex.generated ? cached.texts : null;
 
     if (!texts) {
       texts = {};
-      // Small concurrency pool keeps the UI responsive on slow disks.
       const queue = [...documents];
       const workers = Array.from({ length: 5 }, async () => {
         while (queue.length) {
@@ -263,7 +260,7 @@ async function loadKnowledgeLibrary() {
   } catch (error) {
     console.warn('Knowledge library unavailable:', error);
     elements.libraryStatus.textContent = 'Library unavailable';
-    elements.librarySummary.textContent = 'Add your own files to give UFY context';
+    elements.librarySummary.textContent = 'Add your own files to give Mox context';
     elements.libraryChips.innerHTML = '';
   }
 }
@@ -287,7 +284,7 @@ function renderLibraryChips() {
 
 function renderSources() {
   if (!userDocuments.length) {
-    elements.sourceList.innerHTML = '<div class="empty-sources"><span class="folder-art">▱</span><span>No files added yet</span><small>Add a folder to give UFY more context</small></div>';
+    elements.sourceList.innerHTML = '<div class="empty-sources"><span class="folder-art">▱</span><span>No files added yet</span><small>Add a folder to give Mox more context</small></div>';
     return;
   }
   elements.sourceList.innerHTML = userDocuments.map((doc) =>
@@ -313,12 +310,11 @@ function renderSources() {
 const chunkCache = new WeakMap();
 function chunksFor(doc) {
   if (chunkCache.has(doc)) return chunkCache.get(doc);
-  const words = doc.chunks.map((text) => {
+  const entries = doc.chunks.map((text, index) => {
     const frequencies = new Map();
     for (const word of tokenize(text)) frequencies.set(word, (frequencies.get(word) || 0) + 1);
-    return frequencies;
+    return { text, index, frequencies, doc };
   });
-  const entries = doc.chunks.map((text, index) => ({ text, index, frequencies: words[index], doc }));
   chunkCache.set(doc, entries);
   return entries;
 }
@@ -326,8 +322,7 @@ function chunksFor(doc) {
 function retrieve(query, limit = MAX_EXCERPTS) {
   const terms = [...new Set(tokenize(query))];
   if (!terms.length) return [];
-  const documents = allKnowledge();
-  const chunks = documents.flatMap((doc) => chunksFor(doc));
+  const chunks = allKnowledge().flatMap((doc) => chunksFor(doc));
   if (!chunks.length) return [];
 
   const documentFrequency = new Map();
@@ -350,7 +345,6 @@ function retrieve(query, limit = MAX_EXCERPTS) {
       score += (1 + Math.log(frequency)) * (0.35 + idf);
     }
     if (!score) continue;
-    // Titles and category names are strong signals of what a document covers.
     const title = `${chunk.doc.name} ${chunk.doc.path || ''} ${chunk.doc.categoryLabel || ''}`.toLowerCase();
     let titleMatch = false;
     for (const term of terms) if (title.includes(term)) { score += 1.6; titleMatch = true; }
@@ -359,21 +353,13 @@ function retrieve(query, limit = MAX_EXCERPTS) {
     scored.push({ ...chunk, score, matched, titleMatch, phraseMatch });
   }
   scored.sort((a, b) => b.score - a.score);
-
   if (!scored.length) return [];
 
-  // Ignore passages that only matched very common words: a chunk is only kept if
-  // it matches a term that is rare enough to be informative, and if it scores a
-  // reasonable fraction of the best passage. This keeps unrelated documents out
-  // of the prompt when a question happens to share a common word with them.
   const distinctive = terms.filter((term) => (documentFrequency.get(term) || 0) / chunks.length < 0.45);
   const best = scored[0].score;
   const usable = scored.filter((item) => {
     if (item.score < best * 0.3) return false;
     if (distinctive.length && !distinctive.some((term) => item.frequencies.has(term))) return false;
-    // A passage that matched several query terms, a document title, or the exact
-    // phrase is trustworthy. A passage that matched one generic word has to be
-    // nearly as good as the best hit to earn a place in the prompt.
     const strong = item.matched >= 2 || item.titleMatch || item.phraseMatch;
     return strong || item.score >= best * 0.62;
   });
@@ -401,126 +387,170 @@ function setSourceBadge(kind, text) {
   elements.sourceBadge.textContent = text;
 }
 
-async function detectLocalModel() {
+async function readModelManifest() {
   try {
-    const response = await fetch(`models/${MODEL_ID}/config.json`, { method: 'HEAD', cache: 'no-store' });
-    return response.ok;
-  } catch {
-    return false;
+    const response = await fetch(MODEL_MANIFEST, { cache: 'no-store' });
+    if (!response.ok) throw new Error(String(response.status));
+    modelManifest = await response.json();
+    const available = [];
+    for (const entry of modelManifest.models || []) {
+      try {
+        const head = await fetch(`models/${entry.file}`, { method: 'HEAD', cache: 'no-store' });
+        if (head.ok) available.push(entry);
+      } catch { /* ignore missing files */ }
+    }
+    modelManifest.available = available;
+    return available;
+  } catch (error) {
+    console.warn('Model manifest unavailable:', error);
+    modelManifest = { models: [], available: [] };
+    return [];
   }
 }
 
-function trackProgress(event, progressState) {
-  if (!event) return;
-  const file = event.file || event.name || 'model files';
-  if (event.status === 'progress' && typeof event.progress === 'number') {
-    progressState.files.set(file, Math.max(0, Math.min(100, event.progress)));
-    elements.progressLabel.textContent = `Loading ${file.replace(/^.*\//, '')}`;
-  } else if (event.status === 'done') {
-    progressState.files.set(file, 100);
-    elements.progressLabel.textContent = `Ready: ${file.replace(/^.*\//, '')}`;
-  } else if (event.status === 'initiate') {
-    elements.progressLabel.textContent = `Fetching ${file.replace(/^.*\//, '')}`;
+function activeModel() {
+  const available = modelManifest?.available || [];
+  return available.find((entry) => entry.id === chosenModelId) || available[0] || null;
+}
+
+function describeModel() {
+  const model = activeModel();
+  if (!model) return 'No model file found in models/.';
+  const parts = [model.name];
+  if (model.quantization) parts.push(model.quantization);
+  if (model.parameters) parts.push(model.parameters);
+  return parts.join(' · ');
+}
+
+const WLLAMA_COMPAT_JS = new URL('vendor/wllama/compat/wllama.js', import.meta.url).href;
+const WLLAMA_COMPAT_WASM = new URL('vendor/wllama/compat/wllama.wasm', import.meta.url).href;
+
+// Older browsers without JSPI or 64-bit memory need wllama's compatibility build.
+// If those files are vendored, use them so nothing is fetched from a CDN.
+async function vendoredCompat() {
+  try {
+    const head = await fetch(WLLAMA_COMPAT_WASM, { method: 'HEAD' });
+    return head.ok ? { worker: WLLAMA_COMPAT_JS, wasm: WLLAMA_COMPAT_WASM } : null;
+  } catch {
+    return null;
   }
-  if (progressState.files.size) {
-    let total = 0;
-    for (const value of progressState.files.values()) total += value;
-    const percent = Math.round(total / progressState.files.size);
-    elements.progressBar.style.width = `${percent}%`;
-    elements.progressPercent.textContent = `${percent}%`;
+}
+
+const NOOP_CACHE = {
+  match: async () => null, put: async () => {}, getSize: async () => -1,
+  list: async () => [], delete: async () => {}, getNameFromURL: async (url) => String(url)
+};
+
+async function createEngine() {
+  const { Wllama } = await import(WLLAMA_URL);
+  const config = { default: WLLAMA_BASE, 'wllama.wasm': WLLAMA_WASM };
+  const options = {
+    suppressNativeLog: true,
+    logger: { debug() {}, log() {}, warn() {}, error: (...args) => console.warn('[wllama]', ...args) }
+  };
+
+  let instance;
+  try {
+    instance = new Wllama(config, options);
+  } catch (error) {
+    // Some browsers block the storage backend (private mode, older Safari).
+    // A no-op cache keeps the engine usable: the model streams from this site.
+    console.warn('Falling back to an in-memory model cache:', error);
+    instance = new Wllama(config, { ...options, cacheManager: NOOP_CACHE });
   }
+  const compat = await vendoredCompat();
+  if (compat) instance.setCompat(compat);
+  return instance;
 }
 
 async function startModel({ auto = false } = {}) {
   if (modelReady || generating || elements.load.disabled) return;
   elements.load.disabled = true;
-  elements.load.innerHTML = '<span class="button-sparkle">✳</span> Starting…';
+  elements.load.innerHTML = '<span class="button-sparkle">✳</span> Loading model…';
   elements.progress.hidden = false;
   elements.progressBar.style.width = '0%';
   elements.progressPercent.textContent = '0%';
-  elements.modelTitle.textContent = 'Starting the engine';
-  elements.modelDescription.textContent = 'Loading the model that ships with this site. It is cached by your browser after the first visit.';
-  elements.progressLabel.textContent = 'Checking the model files on this site…';
-  setModelStatus('loading', 'Starting model…');
-  const progressState = { files: new Map() };
+  elements.modelTitle.textContent = 'Loading the bundled model';
+  elements.progressLabel.textContent = 'Reading models/manifest.json…';
+  setModelStatus('loading', 'Loading model…');
 
   try {
-    if (navigator.storage?.persist) await navigator.storage.persist().catch(() => false);
-    const hasLocalModel = await detectLocalModel();
-    const runtime = await import(RUNTIME_URL);
-    const { pipeline, env, TextStreamer } = runtime;
-    streamerClass = TextStreamer || null;
+    if (!modelManifest) await readModelManifest();
+    const model = activeModel();
+    if (!model) {
+      throw new Error('No .gguf model found. Run `python3 tools/fetch_model.py` or reload this page.');
+    }
+    chosenModelId = model.id;
+    loadedModel = model;
+    elements.modelName.textContent = describeModel();
+    elements.modelSize.textContent = displaySize(model.bytes);
 
-    // Everything the engine needs is served from this site: no CDN requests for
-    // the runtime, the WASM binary, or (when present) the weights.
-    env.useBrowserCache = true;
-    env.allowLocalModels = true;
-    env.allowRemoteModels = !hasLocalModel;
-    env.localModelPath = LOCAL_MODEL_PATH;
-    env.backends.onnx ??= {};
-    env.backends.onnx.wasm ??= {};
-    env.backends.onnx.wasm.wasmPaths = ORT_PATH;
-    env.backends.onnx.wasm.proxy = false;
-    const cores = Math.min(4, navigator.hardwareConcurrency || 1);
-    env.backends.onnx.wasm.numThreads = (typeof self !== 'undefined' && self.crossOriginIsolated) ? cores : 1;
-
-    deviceName = navigator.gpu ? 'webgpu' : 'wasm';
-    modelOrigin = hasLocalModel ? 'site' : 'remote';
-    setSourceBadge(hasLocalModel ? 'local' : 'remote', hasLocalModel ? '◈ model on this site' : '◈ weights via Hugging Face');
-
-    if (!hasLocalModel) {
-      elements.progressLabel.textContent = 'Model files are not in ./models — fetching weights from Hugging Face…';
-      elements.modelDescription.textContent = 'No local weight files were found, so the model is fetched once from Hugging Face and cached. Run tools/fetch_model.py to serve it from this site instead.';
+    // 1. Fetch the weights from this site, with a real progress bar.
+    elements.progressLabel.textContent = `Fetching ${model.file} from this site`;
+    const response = await fetch(`models/${model.file}`);
+    if (!response.ok) throw new Error(`models/${model.file} → HTTP ${response.status}`);
+    const total = Number(response.headers.get('Content-Length')) || model.bytes;
+    let blob;
+    if (response.body && typeof response.body.getReader === 'function') {
+      const reader = response.body.getReader();
+      const chunks = [];
+      let received = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        const percent = Math.min(99, Math.round((received / total) * 100));
+        elements.progressBar.style.width = `${percent}%`;
+        elements.progressPercent.textContent = `${percent}%`;
+        elements.progressLabel.textContent = `Fetching ${model.file} · ${displaySize(received)} of ${displaySize(total)}`;
+      }
+      blob = new Blob(chunks);
+    } else {
+      blob = await response.blob();
     }
 
-    const options = {
-      dtype: deviceName === 'webgpu' ? 'q4f16' : 'q4',
-      device: deviceName,
-      progress_callback: (event) => trackProgress(event, progressState)
-    };
-
-    try {
-      textGenerator = await pipeline('text-generation', MODEL_ID, options);
-    } catch (firstError) {
-      if (deviceName !== 'webgpu') throw firstError;
-      console.warn('WebGPU pipeline failed, falling back to WebAssembly:', firstError);
-      deviceName = 'wasm';
-      elements.progressLabel.textContent = 'GPU unavailable — using the CPU compatibility mode…';
-      textGenerator = await pipeline('text-generation', MODEL_ID, { ...options, device: 'wasm', dtype: 'q4' });
-    }
+    // 2. Start llama.cpp in WebAssembly and load the weights.
+    elements.progressLabel.textContent = 'Starting the inference engine…';
+    elements.progressPercent.textContent = '…';
+    engine = await createEngine();
+    const threads = Math.max(1, Math.min(8, navigator.hardwareConcurrency || 2));
+    elements.progressLabel.textContent = `Loading weights (${threads} thread${threads === 1 ? '' : 's'})…`;
+    await engine.loadModel([blob], {
+      n_ctx: CONTEXT_SIZE,
+      n_threads: threads,
+      n_batch: 256,
+      jinja: true,
+      seed: 42
+    });
 
     modelReady = true;
     searchOnly = false;
     elements.progressBar.style.width = '100%';
     elements.progressPercent.textContent = 'Ready';
-    elements.progressLabel.textContent = `Model loaded on this device (${deviceName === 'webgpu' ? 'WebGPU' : 'CPU'})`;
-    elements.modelTitle.textContent = 'Your AI is ready';
-    elements.modelDescription.textContent = 'The model is loaded in this browser. Your questions, files, and the knowledge library are processed on this device.';
+    elements.progressLabel.textContent = 'Model loaded on this device';
+    elements.modelTitle.textContent = 'Mox is ready';
+    elements.modelDescription.textContent = `${describeModel()} is running in this browser. Questions, your files, and the knowledge library stay on this device.`;
     elements.modelSize.textContent = 'Loaded';
-    elements.modelFootnote.innerHTML = `<span>◉</span> ${hasLocalModel ? 'Served by this site' : 'Cached from Hugging Face'} · ${deviceName === 'webgpu' ? 'WebGPU' : 'CPU'} · offline after first load`;
+    elements.modelFootnote.innerHTML = `<span>◉</span> Served by this site · ${threads} thread${threads === 1 ? '' : 's'} · works offline after the first load`;
     elements.load.innerHTML = '<span class="button-sparkle">✓</span> Model loaded';
     elements.load.classList.add('loaded');
     elements.load.disabled = true;
-    setModelStatus('ready', 'AI model ready');
+    setSourceBadge('local', '◈ model on this site');
+    setModelStatus('ready', `${model.name} ready`);
     updateComposer();
-
-    if (navigator.storage?.estimate) {
-      const estimate = await navigator.storage.estimate();
-      if (estimate.quota && estimate.usage / estimate.quota > 0.9) {
-        showToast('Browser storage is nearly full. The model cache may be cleared by the browser.');
-      }
-    }
-    if (!auto) showToast('Your on-device model is ready. Ask something about the knowledge library.');
+    await writeMeta('modelChoice', model.id);
+    if (!auto) showToast(`${model.name} loaded. Ask something about the knowledge library.`);
   } catch (error) {
     console.error('Model loading failed:', error);
     modelReady = false;
     searchOnly = true;
     elements.modelTitle.textContent = 'Search-only mode';
-    elements.modelDescription.textContent = 'The model could not start — probably a blocked download or missing model files. The knowledge library still works: answers will show the matching passages.';
-    elements.progressLabel.textContent = (error.message || 'Model failed to load').slice(0, 130);
+    elements.modelDescription.textContent = 'The model could not start, so answers show the matching passages directly. Reload to try again.';
+    elements.progressLabel.textContent = (error.message || 'Model failed to load').slice(0, 150);
     elements.modelSize.textContent = 'Search only';
     elements.load.disabled = false;
-    elements.load.innerHTML = '<span class="button-sparkle">↻</span> Try starting again <span class="button-arrow">↗</span>';
+    elements.load.innerHTML = '<span class="button-sparkle">↻</span> Retry the model <span class="button-arrow">↗</span>';
     setModelStatus('error', 'Model unavailable · search only');
     setSourceBadge('remote', '◈ search only');
     updateComposer();
@@ -528,56 +558,72 @@ async function startModel({ auto = false } = {}) {
   }
 }
 
-async function generateAnswer(question, excerpts, onToken) {
-  const messages = buildMessages(question, excerpts);
-  let streamed = '';
-  const streamer = streamerClass ? new streamerClass(textGenerator.tokenizer, {
-    skip_prompt: true,
-    skip_special_tokens: true,
-    callback_function: (token) => {
-      streamed += token;
-      if (onToken) onToken(token);
-    }
-  }) : undefined;
-  const output = await textGenerator(messages, {
-    max_new_tokens: MAX_TOKENS,
-    do_sample: false,
-    repetition_penalty: 1.05,
-    streamer
-  });
-
-  const generated = output?.[0]?.generated_text ?? output?.generated_text ?? output;
-  if (Array.isArray(generated)) {
-    const last = [...generated].reverse().find((message) => message.role === 'assistant');
-    return String(last?.content || streamed || '').trim();
-  }
-  return String(generated || streamed || '').trim();
-}
-
 function buildMessages(question, excerpts) {
-  const excerptText = excerpts.length
-    ? excerpts.map((item, index) => `[${index + 1}] ${item.doc.bundled ? `${item.doc.categoryLabel} › ${item.doc.name}` : item.doc.name} (${item.doc.bundled ? item.doc.path : 'your file'})\n${item.text}`).join('\n\n')
-    : 'No matching passages were found in the local knowledge library or your own files.';
+  const sources = excerpts.length
+    ? excerpts.map((item, index) =>
+        `[${index + 1}] ${item.doc.bundled ? `${item.doc.categoryLabel} › ${item.doc.name}` : item.doc.name}\n${item.text.slice(0, 620).trim()}`
+      ).join('\n\n')
+    : 'No matching passages were found in the knowledge library or your files.';
 
   const system = [
-    'You are UFY, a helpful assistant running privately in the user’s web browser.',
-    'You have a built-in knowledge library covering mathematics, reading and writing, technology, science, humanities, and life skills, plus any files the user has added.',
-    'Answer using the numbered source excerpts when they are relevant, and name the source file you used.',
-    'If the excerpts do not contain the answer, say plainly that you could not find it in the library, then offer general knowledge clearly labelled as general knowledge.',
-    'Never invent quotations, statistics, or source names.',
-    'Write in short, clear paragraphs. Use "- " for bullets and **bold** sparingly. Keep replies under about 180 words unless the user asks for detail.',
+    'You are Mox, a private assistant running inside the user\'s browser.',
+    'Answer the user\'s question using the SOURCES below. Name the source file you used.',
+    'If the sources do not contain the answer, say you could not find it in the library.',
+    'Reply in plain text, under 80 words, with no lists unless the user asks for one.',
     '',
-    'SOURCE EXCERPTS:',
-    excerptText
+    'SOURCES:',
+    sources
   ].join('\n');
 
   const messages = [{ role: 'system', content: system }];
-  for (const turn of history.slice(-4)) messages.push(turn);
+  for (const turn of history.slice(-2)) messages.push(turn);
   messages.push({ role: 'user', content: question });
   return messages;
 }
 
+async function generateAnswer(question, excerpts, onToken) {
+  let streamed = '';
+  const result = await engine.createChatCompletion({
+    messages: buildMessages(question, excerpts),
+    stream: true,
+    max_tokens: MAX_NEW_TOKENS,
+    temp: 0.25,
+    top_k: 40,
+    top_p: 0.9,
+    penalty_repeat: 1.12,
+    penalty_last_n: 64,
+    onData: (chunk) => {
+      const piece = chunk?.choices?.[0]?.delta?.content;
+      if (!piece) return;
+      streamed += piece;
+      if (onToken) onToken(piece);
+    }
+  });
+  const complete = result?.choices?.[0]?.message?.content;
+  return cleanupAnswer(complete || streamed);
+}
+
+function cleanupAnswer(text) {
+  return String(text || '')
+    .replace(/<\|im_end\|>[\s\S]*$/g, '')
+    .replace(/<\|.*?\|>/g, '')
+    .replace(/^\s*(?:assistant|mox|user)\s*[:\-]\s*/i, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 /* -------------------------------------------------------------------- chat */
+
+function citationPills(excerpts) {
+  const labels = new Map();
+  for (const item of excerpts) {
+    labels.set(item.doc.id, item.doc.bundled ? `${item.doc.categoryLabel} › ${item.doc.name}` : item.doc.name);
+  }
+  const wrap = document.createElement('div');
+  wrap.className = 'sources-cited';
+  wrap.innerHTML = `<span>Sources</span>${[...labels.values()].map((label) => `<span class="source-pill">${escapeHTML(label)}</span>`).join('')}`;
+  return wrap;
+}
 
 function appendMessage(role, text, excerpts = []) {
   const row = document.createElement('article');
@@ -589,19 +635,7 @@ function appendMessage(role, text, excerpts = []) {
   body.className = 'message-body';
   body.textContent = text;
   row.append(avatar, body);
-
-  if (excerpts.length) {
-    const seen = new Map();
-    for (const item of excerpts) {
-      const label = item.doc.bundled ? `${item.doc.categoryLabel} › ${item.doc.name}` : item.doc.name;
-      seen.set(item.doc.id, label);
-    }
-    const citations = document.createElement('div');
-    citations.className = 'sources-cited';
-    citations.innerHTML = `<span>Sources</span>${[...seen.values()].map((label) => `<span class="source-pill">${escapeHTML(label)}</span>`).join('')}`;
-    body.append(citations);
-  }
-
+  if (excerpts.length) body.append(citationPills(excerpts));
   elements.messages.append(row);
   elements.welcome.hidden = true;
   elements.conversation.scrollTop = elements.conversation.scrollHeight;
@@ -614,22 +648,23 @@ function updateComposer() {
   elements.send.disabled = !usable || generating || !elements.input.value.trim();
   const sources = allKnowledge().length;
   if (generating) elements.hint.textContent = 'Generating on this device…';
-  else if (modelReady) elements.hint.textContent = `${sources} searchable document${sources === 1 ? '' : 's'} · ${deviceName === 'webgpu' ? 'WebGPU' : 'CPU'}`;
+  else if (modelReady) elements.hint.textContent = `${sources} searchable document${sources === 1 ? '' : 's'} · ${loadedModel?.parameters || 'local model'}`;
   else if (searchOnly) elements.hint.textContent = 'Search-only mode — answers show matching passages';
   else elements.hint.textContent = 'Starting the local model…';
 }
 
-// Passages are cut at character boundaries, so they can begin mid-sentence.
-// Start the visible snippet at a sentence break when one appears early on.
+// Passages are cut at character boundaries, so they can begin mid-sentence or
+// mid-word. Start at the first sentence break, or at least a word boundary.
 function tidySnippet(text, maxLength = 430) {
   let value = text.replace(/\s+/g, ' ').trim();
   const boundary = value.search(/(?<=[.!?])\s/);
-  if (boundary > 15 && boundary < 200) value = value.slice(boundary + 1).trim();
+  if (boundary > 12 && boundary < 220) value = value.slice(boundary + 1).trim();
+  else if (/^[a-z]/.test(value)) value = value.replace(/^\S+\s+/, '');
   if (value.length > maxLength) value = `${value.slice(0, maxLength).replace(/\s+\S*$/, '')}…`;
-  return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function fallbackAnswer(question, excerpts) {
+function fallbackAnswer(excerpts) {
   if (!excerpts.length) {
     return 'The model is not available right now, and nothing in the knowledge library matched that question. Try adding your own files, or reload to retry the model.';
   }
@@ -653,10 +688,9 @@ async function handleSubmit(event) {
   updateComposer();
   const excerpts = retrieve(question);
 
-  let body = null;
   if (modelReady) {
     elements.typing.hidden = false;
-    body = appendMessage('assistant', '');
+    const body = appendMessage('assistant', '');
     const cursor = document.createElement('span');
     cursor.className = 'cursor-blink';
     body.append(cursor);
@@ -670,32 +704,24 @@ async function handleSubmit(event) {
         elements.conversation.scrollTop = elements.conversation.scrollHeight;
       });
       cursor.remove();
-      const final = (answer || streamed || '').replace(/^\s*(?:assistant|ufy)\s*[:\-]\s*/i, '').trim();
-      if (!final) throw new Error('Empty response');
+      const final = cleanupAnswer(answer || streamed);
+      if (!final || final.length < 2) throw new Error('Empty response');
       body.innerHTML = renderRich(final);
-      if (excerpts.length) {
-        const citations = document.createElement('div');
-        citations.className = 'sources-cited';
-        const labels = new Map();
-        for (const item of excerpts) labels.set(item.doc.id, item.doc.bundled ? `${item.doc.categoryLabel} › ${item.doc.name}` : item.doc.name);
-        citations.innerHTML = `<span>Sources</span>${[...labels.values()].map((label) => `<span class="source-pill">${escapeHTML(label)}</span>`).join('')}`;
-        body.append(citations);
-      }
-      history.push({ role: 'user', content: question.slice(0, 900) });
-      history.push({ role: 'assistant', content: final.slice(0, 900) });
-      history = history.slice(-6);
+      if (excerpts.length) body.append(citationPills(excerpts));
+      history.push({ role: 'user', content: question.slice(0, 600) });
+      history.push({ role: 'assistant', content: final.slice(0, 600) });
+      history = history.slice(-4);
     } catch (error) {
       console.error('Inference failed:', error);
       cursor.remove();
-      body.remove();
-      appendMessage('assistant', fallbackAnswer(question, excerpts), excerpts);
+      body.closest('.message')?.remove();
+      appendMessage('assistant', fallbackAnswer(excerpts), excerpts);
       showToast('The model could not answer; showing matching passages instead.');
     } finally {
       elements.typing.hidden = true;
     }
   } else {
-    elements.typing.hidden = true;
-    appendMessage('assistant', fallbackAnswer(question, excerpts), excerpts);
+    appendMessage('assistant', fallbackAnswer(excerpts), excerpts);
   }
 
   generating = false;
@@ -748,11 +774,23 @@ async function importFiles(fileList) {
 
 /* ------------------------------------------------------------------- modal */
 
+function modelListMarkup() {
+  const available = modelManifest?.available || [];
+  if (!available.length) {
+    return '<p>No model files were found in <code>models/</code>. Run <code>python3 tools/fetch_model.py</code>, then reload.</p>';
+  }
+  return `<div class="model-choices">${available.map((entry) => `
+    <button class="model-choice${entry.id === chosenModelId ? ' active' : ''}" data-model="${escapeHTML(entry.id)}">
+      <span class="model-choice-name">${escapeHTML(entry.name)}${entry.bundled ? ' <em>bundled</em>' : ''}</span>
+      <span class="model-choice-meta">${escapeHTML([entry.parameters, entry.quantization, displaySize(entry.bytes), entry.license].filter(Boolean).join(' · '))}</span>
+    </button>`).join('')}</div>`;
+}
+
 function openModal(kind = 'privacy', category = null) {
   const header = {
     privacy: ['A NOTE ON PRIVACY', 'Everything stays with you.'],
-    settings: ['MODEL & DEVICE', 'Your AI, running locally.'],
-    library: ['KNOWLEDGE LIBRARY', String(libraryDocuments.length) + ' documents, built in.']
+    settings: ['MODEL & DEVICE', 'A real model, running here.'],
+    library: ['KNOWLEDGE LIBRARY', `${libraryDocuments.length} documents, built in.`]
   }[kind] || ['A NOTE ON PRIVACY', 'Everything stays with you.'];
 
   elements.modalKicker.textContent = header[0];
@@ -760,29 +798,26 @@ function openModal(kind = 'privacy', category = null) {
 
   if (kind === 'settings') {
     elements.modalCopy.innerHTML = `
-      <p><strong>Model:</strong> Qwen2.5 0.5B Instruct, a compact open-weight language model, running as ONNX in this browser.</p>
-      <p><strong>Engine source:</strong> ${modelOrigin === 'site'
-        ? 'the weights are served from <code>models/</code> on this site.'
-        : modelOrigin === 'remote'
-          ? 'the weights are fetched from the Hugging Face CDN and cached in this browser.'
-          : 'not loaded yet.'}</p>
-      <p><strong>Device:</strong> ${deviceName === 'webgpu' ? 'WebGPU (graphics card)' : 'WebAssembly (CPU)'} · runtime served from <code>vendor/</code>, not a CDN.</p>
-      <p><strong>Library:</strong> ${libraryDocuments.length} bundled documents across ${new Set(libraryDocuments.map((doc) => doc.categoryLabel)).size} topics, indexed in your browser.</p>
-      <p><strong>Your files:</strong> ${userDocuments.length} imported document${userDocuments.length === 1 ? '' : 's'}, stored in this browser’s IndexedDB.</p>
-      <p><strong>To serve the model from this site:</strong> run <code>python3 tools/fetch_model.py</code>, then reload. Weights are ignored by git so the repository stays small.</p>`;
+      <p><strong>Running now:</strong> ${escapeHTML(modelReady ? describeModel() : 'no model loaded')} — llama.cpp compiled to WebAssembly, executing on this device.</p>
+      <p><strong>Where the weights come from:</strong> <code>models/</code> on this site. ${loadedModel ? `${escapeHTML(displaySize(loadedModel.bytes))} ${loadedModel.quantization || ''} GGUF, ${escapeHTML(loadedModel.license || 'open license')}.` : ''} Nothing is fetched from Hugging Face at runtime.</p>
+      <p><strong>Choose a model</strong></p>
+      ${modelListMarkup()}
+      <p><strong>Upgrade:</strong> run <code>python3 tools/fetch_model.py --preset qwen-0.5b</code> for a 0.5B model, or drop any <code>.gguf</code> file into <code>models/</code> and add it to <code>models/manifest.json</code>. Larger models are smarter but slower on a CPU.</p>
+      <p><strong>Knowledge library:</strong> ${libraryDocuments.length} documents across ${new Set(libraryDocuments.map((doc) => doc.categoryLabel)).size} topics, indexed in your browser.<br>
+      <strong>Your files:</strong> ${userDocuments.length} imported document${userDocuments.length === 1 ? '' : 's'} in IndexedDB.</p>
+      <button class="modal-secondary" id="modelUpload">Load a .gguf from this computer</button>`;
   } else if (kind === 'library') {
     const groups = new Map();
     for (const doc of libraryDocuments) {
-      const key = doc.category;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(doc);
+      if (!groups.has(doc.category)) groups.set(doc.category, []);
+      groups.get(doc.category).push(doc);
     }
-    const categoryOrder = (libraryIndex?.categories || []).map((entry) => entry.id);
-    const groupEntries = [...groups.entries()].sort((a, b) => {
-      const first = categoryOrder.indexOf(a[0]), second = categoryOrder.indexOf(b[0]);
-      return (first < 0 ? 99 : first) - (second < 0 ? 99 : second);
-    });
-    const sections = groupEntries
+    const order = (libraryIndex?.categories || []).map((entry) => entry.id);
+    const sections = [...groups.entries()]
+      .sort((a, b) => {
+        const first = order.indexOf(a[0]), second = order.indexOf(b[0]);
+        return (first < 0 ? 99 : first) - (second < 0 ? 99 : second);
+      })
       .filter(([key]) => !category || key === category)
       .map(([key, docs]) => `
         <div class="library-group">
@@ -790,15 +825,29 @@ function openModal(kind = 'privacy', category = null) {
           ${docs.map((doc) => `<div class="library-doc">${escapeHTML(doc.name)}<span>${doc.chunks.length} passages</span></div>`).join('')}
         </div>`).join('');
     elements.modalCopy.innerHTML = `${sections || '<p>No documents loaded yet.</p>'}
-      <p>Ask a question and UFY retrieves the most relevant passages from these files. To add your own, use <strong>Add a folder</strong> or drop files into <code>knowledge/</code> and run <code>python3 tools/build_knowledge_index.py</code>.</p>`;
+      <p>Ask a question and Mox retrieves the most relevant passages from these files. To add your own, use <strong>Add a folder</strong>, or drop files into <code>knowledge/</code> and run <code>python3 tools/build_knowledge_index.py</code>.</p>`;
   } else {
     elements.modalCopy.innerHTML = `
-      <p>The language model runs in this browser using your device’s processor or graphics card. Your questions, your imported files, and the matching passages are never sent to an AI server.</p>
-      <p><strong>The knowledge library</strong> is part of this website: ${libraryDocuments.length} documents covering mathematics, reading and writing, technology, science, humanities, and life skills. They are downloaded as text into your browser once, indexed locally, and searched for every question. Nothing in the library changes the model’s weights.</p>
-      <p><strong>Downloads:</strong> the runtime (<code>vendor/</code>) and the library are served by this site. The model weights come from <code>models/</code> when present; otherwise they are fetched once from Hugging Face and cached by your browser.</p>
-      <p><strong>Storage:</strong> imported files and the library cache live in IndexedDB. Clearing site data removes them.</p>`;
+      <p>The model is a ${escapeHTML(describeModel())} GGUF file served by this website and executed in your browser by llama.cpp (WebAssembly). Your questions, your imported files, and the passages retrieved for them never leave this device.</p>
+      <p><strong>The knowledge library</strong> is part of this site: ${libraryDocuments.length} documents covering mathematics, reading and writing, technology, science, humanities, and life skills. They are downloaded as text into your browser once, indexed locally, and searched for every question. They do not change the model's weights.</p>
+      <p><strong>No third-party model host.</strong> The engine (<code>vendor/wllama</code>) and the weights (<code>models/</code>) sit next to the page, so once the model is loaded the app keeps working offline.</p>
+      <p><strong>Storage:</strong> imported files, the library cache, and the browser's copy of the model live in IndexedDB. Clearing site data removes them.</p>`;
   }
+
   elements.modal.hidden = false;
+  const upload = $('#modelUpload');
+  if (upload) upload.addEventListener('click', () => elements.modelPicker.click());
+  elements.modalCopy.querySelectorAll('[data-model]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const id = button.dataset.model;
+      if (id === chosenModelId) return;
+      chosenModelId = id;
+      await writeMeta('modelChoice', id);
+      elements.modal.hidden = true;
+      showToast('Reloading with the selected model…');
+      location.reload();
+    });
+  });
 }
 
 /* ------------------------------------------------------------------ wiring */
@@ -823,6 +872,14 @@ elements.modal.addEventListener('click', (event) => { if (event.target === eleme
 
 elements.filePicker.addEventListener('change', (event) => { importFiles(event.target.files); event.target.value = ''; });
 elements.folderPicker.addEventListener('change', (event) => { importFiles(event.target.files); event.target.value = ''; });
+elements.modelPicker.addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  event.target.value = '';
+  if (!file) return;
+  if (!/\.gguf$/i.test(file.name)) { showToast('Choose a .gguf model file.'); return; }
+  elements.modal.hidden = true;
+  await loadModelFile(file);
+});
 elements.form.addEventListener('submit', handleSubmit);
 elements.input.addEventListener('input', () => {
   elements.input.style.height = 'auto';
@@ -838,7 +895,7 @@ elements.input.addEventListener('keydown', (event) => {
 $('#newChat').addEventListener('click', resetChat);
 $('#quickAsk').addEventListener('click', () => {
   elements.input.focus();
-  if (!modelReady && !searchOnly) showToast('The model is still starting — one moment.');
+  if (!modelReady && !searchOnly) showToast('The model is still loading — one moment.');
 });
 elements.libraryToggle.addEventListener('change', async () => {
   libraryEnabled = elements.libraryToggle.checked;
@@ -855,11 +912,41 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') elements.modal.hidden = true;
 });
 
-// Exposed for debugging in the browser console and for automated smoke tests.
-window.__ufy = {
-  retrieve, allKnowledge, renderRich, makeChunks, openModal, resetChat,
-  state: () => ({ modelReady, searchOnly, deviceName, modelOrigin, libraryEnabled, libraryCount: libraryDocuments.length, userCount: userDocuments.length })
-};
+async function loadModelFile(file) {
+  try {
+    elements.progress.hidden = false;
+    elements.modelTitle.textContent = 'Loading your .gguf file';
+    elements.progressLabel.textContent = `${file.name} · ${displaySize(file.size)}`;
+    elements.progressBar.style.width = '35%';
+    elements.progressPercent.textContent = '…';
+    engine = await createEngine();
+    const threads = Math.max(1, Math.min(8, navigator.hardwareConcurrency || 2));
+    await engine.loadModel([file], { n_ctx: CONTEXT_SIZE, n_threads: threads, n_batch: 256, jinja: true });
+    modelReady = true;
+    searchOnly = false;
+    loadedModel = { name: file.name, bytes: file.size, parameters: '', quantization: '', license: 'your file' };
+    elements.progressBar.style.width = '100%';
+    elements.progressPercent.textContent = 'Ready';
+    elements.progressLabel.textContent = 'Model loaded on this device';
+    elements.modelTitle.textContent = 'Mox is ready';
+    elements.modelDescription.textContent = `${file.name} is running in this browser.`;
+    elements.modelSize.textContent = displaySize(file.size);
+    elements.load.innerHTML = '<span class="button-sparkle">✓</span> Model loaded';
+    elements.load.classList.add('loaded');
+    elements.load.disabled = true;
+    setModelStatus('ready', 'Custom model ready');
+    updateComposer();
+    showToast(`${file.name} loaded. Ask away.`);
+  } catch (error) {
+    console.error(error);
+    searchOnly = true;
+    elements.modelTitle.textContent = 'Could not load that file';
+    elements.modelDescription.textContent = 'The file may not be a supported GGUF chat model, or the browser ran out of memory.';
+    elements.progressLabel.textContent = (error.message || '').slice(0, 140);
+    setModelStatus('error', 'Model unavailable · search only');
+    updateComposer();
+  }
+}
 
 (async function initialize() {
   if (window.location.protocol === 'file:') {
@@ -876,18 +963,39 @@ window.__ufy = {
     if (!('indexedDB' in window)) throw new Error('IndexedDB is not available in this browser.');
     db = await openDatabase();
     userDocuments = await readAllDocuments();
-    const storedToggle = await readMeta('libraryEnabled');
-    if (storedToggle === false) {
+    if ((await readMeta('libraryEnabled')) === false) {
       libraryEnabled = false;
       elements.libraryToggle.checked = false;
     }
+    chosenModelId = await readMeta('modelChoice');
     renderSources();
   } catch (error) {
     console.error('Could not open local workspace:', error);
     showToast('Local browser storage is unavailable. Try a recent version of Chrome, Edge, or Firefox.');
   }
   updateComposer();
-  setSourceBadge('', '◈ loading engine…');
+  setSourceBadge('', '◈ reading model manifest…');
+  await readModelManifest();
+  const model = activeModel();
+  if (model) {
+    chosenModelId = chosenModelId && (modelManifest.available || []).some((entry) => entry.id === chosenModelId) ? chosenModelId : model.id;
+    elements.modelName.textContent = describeModel();
+    elements.modelSize.textContent = displaySize(model.bytes);
+    setSourceBadge('local', '◈ model on this site');
+  } else {
+    setSourceBadge('remote', '◈ no model file');
+  }
   await loadKnowledgeLibrary();
   await startModel({ auto: true });
 })();
+
+// Exposed for debugging in the browser console and for automated smoke tests.
+window.__mox = {
+  retrieve, allKnowledge, renderRich, makeChunks, openModal, resetChat,
+  state: () => ({
+    modelReady, searchOnly, libraryEnabled, generating,
+    libraryCount: libraryDocuments.length, userCount: userDocuments.length,
+    availableModels: (modelManifest?.available || []).map((entry) => entry.id),
+    chosenModelId, loadedModel: loadedModel?.id || null
+  })
+};

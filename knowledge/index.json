@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "generated": "2026-10-28T05:07:34Z",
+  "generated": "2026-10-28T05:28:03Z",
   "categories": [
     {
       "id": "math",
@@ -124,6 +124,13 @@
       "words": 676
     },
     {
+      "path": "mox-starter-guide.md",
+      "title": "About this workspace",
+      "category": "",
+      "bytes": 3167,
+      "words": 480
+    },
+    {
       "path": "reading/grammar-and-punctuation.md",
       "title": "Grammar and punctuation",
       "category": "reading",
@@ -227,13 +234,6 @@
       "category": "technology",
       "bytes": 4258,
       "words": 650
-    },
-    {
-      "path": "ufy-starter-guide.md",
-      "title": "About this workspace",
-      "category": "",
-      "bytes": 2514,
-      "words": 390
     }
   ]
 }

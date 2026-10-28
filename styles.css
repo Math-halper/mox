@@ -1,4 +1,4 @@
-/* UFY Dark — a dark-first theme. No web fonts, no external assets. */
+/* Mox — dark-first theme. No web fonts, no external assets, no CDN. */
 :root {
   color-scheme: dark;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -253,6 +253,7 @@ body {
 .model-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .model-label { font-size: 8px; letter-spacing: 1.1px; color: #7b74a8; font-weight: 700; }
 .model-card h2 { font-size: 14.5px; letter-spacing: -.25px; margin: 4px 0 0; font-weight: 700; color: var(--ink); }
+.model-file { display: block; margin-top: 3px; font-size: 9.5px; color: #8f86c9; }
 .model-size {
   border: 1px solid #2f2b4a; background: #171528; color: #a99cf0;
   font-size: 9px; padding: 3px 7px; border-radius: 5px; white-space: nowrap;
@@ -414,6 +415,23 @@ body {
   margin-top: 14px; border: 0; background: linear-gradient(120deg, #8b78ff, #6c55e0);
   color: #fff; border-radius: 7px; padding: 9px 15px; font: 600 10.5px inherit; cursor: pointer;
 }
+.model-choices { display: grid; gap: 6px; margin: 6px 0 4px; }
+.model-choice {
+  display: flex; flex-direction: column; gap: 3px; text-align: left; cursor: pointer;
+  background: #14141f; border: 1px solid #2a2740; border-radius: 8px; padding: 8px 10px;
+  color: var(--ink-soft); font: inherit;
+}
+.model-choice:hover { border-color: #4a4079; background: #171528; }
+.model-choice.active { border-color: #6b58d8; background: #191631; box-shadow: inset 0 0 0 1px #6b58d855; }
+.model-choice-name { font-size: 11px; font-weight: 600; }
+.model-choice-name em { font-style: normal; font-size: 8px; letter-spacing: .8px; text-transform: uppercase; color: #8fd9bd; margin-left: 5px; }
+.model-choice-meta { font-size: 9px; color: var(--muted-dim); }
+.modal-secondary {
+  margin-top: 10px; border: 1px dashed #34345a; background: #12121b; color: var(--accent-soft);
+  border-radius: 7px; padding: 8px 12px; font: 600 10px inherit; cursor: pointer;
+}
+.modal-secondary:hover { border-color: #564a96; }
+.modal-copy code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; color: #c9bdff; background: #1a1a26; border: 1px solid #2a2a3a; border-radius: 4px; padding: 1px 4px; }
 .library-group { margin: 12px 0; }
 .library-group h3 {
   font-size: 9px; letter-spacing: 1.1px; text-transform: uppercase; color: #8f84c9;

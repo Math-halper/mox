@@ -1,6 +1,6 @@
 # The knowledge folder
 
-This folder is the library UFY reads. Every `.md` (or `.txt`, `.pdf`, `.csv`, `.json`) file here is chunked, indexed locally in your browser, and searched when you ask a question. Answers cite the file they came from.
+This folder is the library Mox reads. Every `.md` (or `.txt`, `.pdf`, `.csv`, `.json`) file here is chunked, indexed locally in your browser, and searched when you ask a question. Answers cite the file they came from.
 
 ## What is in the starter library
 

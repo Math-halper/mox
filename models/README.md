@@ -1,52 +1,63 @@
 # models/
 
-The website looks here first for model weights, before it ever contacts Hugging Face.
+This folder is the model store for the site. The page reads `manifest.json`, fetches the
+GGUF files listed there **from this website**, and runs them in the browser with wllama
+(llama.cpp in WebAssembly).
 
 ```
 models/
-└── onnx-community/
-    └── Qwen2.5-0.5B-Instruct/
-        ├── config.json
-        ├── generation_config.json
-        ├── tokenizer.json
-        ├── tokenizer_config.json
-        ├── special_tokens_map.json
-        ├── vocab.json
-        ├── merges.txt
-        └── onnx/
-            ├── decoder_model_merged_q4.onnx
-            └── decoder_model_merged_q4f16.onnx
+├── manifest.json                        what the app offers in Model & settings
+├── smollm2-135m-instruct-q4_1.gguf      bundled, committed (94 MB, Apache-2.0)
+└── qwen2.5-0.5b-instruct-q4_k_m.gguf    optional, downloaded, git-ignored
 ```
 
-## Fill it in
+## The bundled model
+
+| Field | Value |
+| --- | --- |
+| Model | `HuggingFaceTB/SmolLM2-135M-Instruct` |
+| Quantization | Q4_1 (GGUF v3) |
+| Size | 98,362,432 bytes |
+| Context | 8,192 trained, 4,096 used per session |
+| License | Apache-2.0 |
+
+It is committed so a fresh clone runs a real model with no downloads.
+
+## Adding a model
 
 ```sh
-python3 tools/fetch_model.py
-```
-
-The script reads the file listing from the Hugging Face API and downloads only the
-files the browser engine needs (about 400 MB, mostly the two ONNX weight files).
-It also writes `model-manifest.json`.
-
-Check status at any time:
-
-```sh
+python3 tools/fetch_model.py --list               # presets
+python3 tools/fetch_model.py --preset qwen-0.5b   # ~400 MB
+python3 tools/fetch_model.py --url <gguf-url> --name "My model"
 python3 tools/fetch_model.py --check
 ```
 
-## Why the weights are not in git
+Each download is registered in `manifest.json`:
 
-Weight files are large binaries and are ignored by `.gitignore`. Keep them in the
-folder on the machine that serves the site, or host `models/` from a static file
-service next to the rest of the app.
+```json
+{
+  "id": "qwen2.5-0.5b-instruct-q4_k_m",
+  "name": "Qwen2.5 0.5B Instruct",
+  "file": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+  "bytes": 412345678,
+  "parameters": "0.5B",
+  "quantization": "Q4_K_M",
+  "context": 32768,
+  "license": "Apache-2.0"
+}
+```
 
-## How the app decides
+To add one by hand, copy the `.gguf` in, append an entry, and reload the page. You can
+also load a `.gguf` from your computer at runtime without touching this folder
+(**Model & settings → Load a .gguf from this computer**).
 
-On startup the app requests `models/onnx-community/Qwen2.5-0.5B-Instruct/config.json`:
+## Why only one file is in git
 
-- **Present** → weights are loaded from this site only. No request to Hugging Face.
-- **Missing** → the browser downloads weights from the Hugging Face CDN once and
-  caches them. The top bar shows which source is in use.
+GitHub rejects files above 100 MB, and weight binaries bloat a repository. The bundled
+135M model sits just under that limit; everything else is listed in `.gitignore` and is
+expected to live on the machine that serves the site.
 
-To point at a different model, set `UFY_MODEL_ID` when fetching and change `MODEL_ID`
-at the top of `app.js`.
+## Requirements for a model
+
+- GGUF format with a chat template in its metadata (most instruct models have one).
+- Under roughly 2 GB: the weights are loaded into a single browser tab's memory.
