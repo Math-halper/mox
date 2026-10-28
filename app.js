@@ -4,7 +4,6 @@
 // knowledge/ is indexed locally and retrieved for every question.
 
 const WLLAMA_URL = new URL('vendor/wllama/wllama.js', import.meta.url).href;
-const WLLAMA_BASE = new URL('vendor/wllama/', import.meta.url).href;
 const WLLAMA_WASM = new URL('vendor/wllama/wllama.wasm', import.meta.url).href;
 const MODEL_MANIFEST = 'models/manifest.json';
 const PDFJS_URL = new URL('vendor/pdfjs/pdf.min.mjs', import.meta.url).href;
