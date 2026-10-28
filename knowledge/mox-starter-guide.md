@@ -15,6 +15,14 @@ Because the model is small it is fast to start and light on memory, but its reas
 
 Download a larger GGUF once (for example `python3 tools/fetch_model.py --preset qwen-0.5b`), or drop any `.gguf` chat model into `models/` and list it in `models/manifest.json`. Open **Model & settings** in the sidebar to switch between the models on disk. Bigger models answer better and run slower on a CPU.
 
+## Chats, shortcuts, and offline use
+
+Every conversation is saved in this browser and listed in the sidebar, so closing the tab does not lose it. Open an old chat to pick it up again, or press the small × beside its title to delete it. Inside a conversation, Stop halts a long answer, Copy puts the text on the clipboard, and Regenerate asks the same question again. Every answer lists the passages it used: click one to read the exact text.
+
+Keyboard: ⌘K or Ctrl K starts a new chat, ⌘/ or Ctrl / jumps to the message box, Enter sends, Shift Enter starts a new line, and Escape closes a dialog or the phone drawer.
+
+Once the page has been opened, a service worker keeps a copy of it. A reload with no internet connection still opens Mox and answers from the model and library already stored on the device. Files can be dragged onto the message box or pasted into it instead of using the Add a folder button.
+
 ## Starting up
 
 Mox is a static website, so there is nothing to install.

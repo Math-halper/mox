@@ -14,8 +14,13 @@ const DB_NAME = 'mox-private-workspace';
 const DB_VERSION = 2;
 const MAX_FILE_BYTES = 12 * 1024 * 1024;
 const MAX_EXCERPTS = 4;
-const MAX_NEW_TOKENS = 220;
+const EXCERPT_CHARS = 700;
+const MAX_NEW_TOKENS = 320;
 const CONTEXT_SIZE = 4096;
+const HISTORY_TURNS = 6;          // how many past messages the model sees
+const CHAT_META_KEY = 'conversations';
+const CHAT_LIMIT = 30;            // conversations kept in browser storage
+const SAVED_TEXT_LIMIT = 6000;    // characters per saved message
 
 const STOP_WORDS = new Set(
   ('a an the and or but if then else when where why how what who whom which this that these those is are was were be been ' +
@@ -41,6 +46,7 @@ const elements = {
   libraryStatus: $('#libraryStatus'), librarySummary: $('#librarySummary'), libraryChips: $('#libraryChips'),
   libraryToggle: $('#libraryToggle'), quickStart: $('#quickStart'),
   chatList: $('#chatList'), chatEmpty: $('#chatEmpty'),
+  sidebarToggle: $('#sidebarToggle'), sidebarScrim: $('#sidebarScrim'), srStatus: $('#srStatus'),
   modal: $('#modalBackdrop'), modalTitle: $('#modalTitle'),
   modalKicker: $('#modalKicker'), modalCopy: $('#modalCopy'), modalDone: $('#modalDone'), toast: $('#toast')
 };
@@ -60,9 +66,12 @@ let generating = false;
 let modelOrigin = 'site';
 let toastTimer;
 let history = [];
-const conversations = [];   // {id, title, records: [{role, text, excerpts}]}
+const conversations = [];   // {id, records: [{role, text, excerpts, stats}], updatedAt}
 let activeChatId = null;
 let loadedModel = null;
+let abortController = null;  // cancels the running generation
+let saveTimer;
+let lastFocused = null;      // element to focus after a modal closes
 
 /* ------------------------------------------------------------------ storage */
 
@@ -179,14 +188,54 @@ function displaySize(bytes) {
   return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 function renderRich(text) {
-  return escapeHTML(text).split('\n').map((line) => {
-    const value = line
+  const lines = escapeHTML(text).split('\n');
+  const out = [];
+  let fence = null;
+  let list = null;             // 'ul' | 'ol'
+  const closeList = () => { if (list) { out.push(`</${list}>`); list = null; } };
+
+  for (const line of lines) {
+    if (/^\s*```/.test(line)) {
+      if (fence === null) {
+        closeList();
+        fence = [];
+        continue;
+      }
+      out.push(`<pre class="md-code"><code>${fence.join('\n')}</code></pre>`);
+      fence = null;
+      continue;
+    }
+    if (fence) { fence.push(line); continue; }
+
+    let value = line
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
       .replace(/`([^`]+)`/g, '<code>$1</code>');
-    if (/^\s*#{1,6}\s+/.test(value)) return `<span class="md-heading">${value.replace(/^\s*#{1,6}\s+/, '')}</span>`;
-    if (/^\s*[-*•]\s+/.test(value)) return `<span class="md-bullet">${value.replace(/^\s*[-*•]\s+/, '')}</span>`;
-    return value;
-  }).join('\n');
+
+    const heading = value.match(/^\s*#{1,6}\s+(.*)$/);
+    const ordered = value.match(/^\s*(\d{1,3})[.)]\s+(.*)$/);
+    const bullet = value.match(/^\s*[-*•]\s+(.*)$/);
+    const quote = value.match(/^\s*(?:>|&gt;)\s?(.*)$/);
+
+    if (heading) { closeList(); out.push(`<span class="md-heading">${heading[1]}</span>`); continue; }
+    if (/^\s*([-*_])\1{2,}\s*$/.test(value)) { closeList(); out.push('<hr class="md-rule">'); continue; }
+    if (quote) { closeList(); out.push(`<span class="md-quote">${quote[1]}</span>`); continue; }
+    if (bullet) {
+      if (list !== 'ul') { closeList(); out.push('<ul class="md-list">'); list = 'ul'; }
+      out.push(`<li>${bullet[1]}</li>`);
+      continue;
+    }
+    if (ordered) {
+      if (list !== 'ol') { closeList(); out.push('<ol class="md-list">'); list = 'ol'; }
+      out.push(`<li value="${ordered[1]}">${ordered[2]}</li>`);
+      continue;
+    }
+    closeList();
+    out.push(value);
+  }
+  if (fence) out.push(`<pre class="md-code"><code>${fence.join('\n')}</code></pre>`);
+  closeList();
+  return out.join('\n');
 }
 
 /* ------------------------------------------------------------------ toasts */
@@ -315,11 +364,34 @@ function chunksFor(doc) {
   if (chunkCache.has(doc)) return chunkCache.get(doc);
   const entries = doc.chunks.map((text, index) => {
     const frequencies = new Map();
-    for (const word of tokenize(text)) frequencies.set(word, (frequencies.get(word) || 0) + 1);
-    return { text, index, frequencies, doc };
+    const stems = new Map();
+    for (const word of tokenize(text)) {
+      frequencies.set(word, (frequencies.get(word) || 0) + 1);
+      const key = stem(word);
+      stems.set(key, (stems.get(key) || 0) + 1);
+    }
+    return { text, index, frequencies, stems, doc };
   });
   chunkCache.set(doc, entries);
   return entries;
+}
+
+// Crude suffix stripping: enough to match "fractions" with "fraction" and
+// "computing" with "compute" without shipping a stemmer library.
+const stemCache = new Map();
+function stem(word) {
+  if (stemCache.has(word)) return stemCache.get(word);
+  let value = word;
+  if (value.length > 4) {
+    value = value
+      .replace(/(ies)$/, 'y')
+      .replace(/([^s])s$/, '$1')
+      .replace(/(ing|edly|ed|ly)$/, '')
+      .replace(/(t|e)$/, '');
+  }
+  if (value.length < 3) value = word;
+  stemCache.set(word, value);
+  return value;
 }
 
 function retrieve(query, limit = MAX_EXCERPTS) {
@@ -330,8 +402,9 @@ function retrieve(query, limit = MAX_EXCERPTS) {
 
   const documentFrequency = new Map();
   for (const term of terms) {
+    const key = stem(term);
     let count = 0;
-    for (const chunk of chunks) if (chunk.frequencies.has(term)) count++;
+    for (const chunk of chunks) if (chunk.frequencies.has(term) || chunk.stems.has(key)) count++;
     documentFrequency.set(term, count);
   }
 
@@ -341,17 +414,26 @@ function retrieve(query, limit = MAX_EXCERPTS) {
     let score = 0;
     let matched = 0;
     for (const term of terms) {
-      const frequency = chunk.frequencies.get(term) || 0;
+      const frequency = Math.max(
+        chunk.frequencies.get(term) || 0,
+        chunk.stems.get(stem(term)) || 0
+      );
       if (!frequency) continue;
       matched++;
       const idf = Math.log(1 + chunks.length / (1 + (documentFrequency.get(term) || 0)));
       score += (1 + Math.log(frequency)) * (0.35 + idf);
     }
     if (!score) continue;
+    // Reward covering more of the question, not just one lucky keyword.
+    score += matched * matched * 0.55;
     const title = `${chunk.doc.name} ${chunk.doc.path || ''} ${chunk.doc.categoryLabel || ''}`.toLowerCase();
     let titleMatch = false;
-    for (const term of terms) if (title.includes(term)) { score += 1.6; titleMatch = true; }
-    const phraseMatch = phrase.length > 4 && chunk.text.toLowerCase().includes(phrase);
+    for (const term of terms) {
+      if (title.includes(term) || title.includes(stem(term))) { score += 1.6; titleMatch = true; }
+    }
+    // Only multi-word phrases get the phrase bonus: for a single word it would
+    // just double-count the term and make "fraction"/"fractions" rank differently.
+    const phraseMatch = phrase.includes(' ') && chunk.text.toLowerCase().includes(phrase);
     if (phraseMatch) score += 3.5;
     scored.push({ ...chunk, score, matched, titleMatch, phraseMatch });
   }
@@ -362,8 +444,9 @@ function retrieve(query, limit = MAX_EXCERPTS) {
   const best = scored[0].score;
   const usable = scored.filter((item) => {
     if (item.score < best * 0.3) return false;
-    if (distinctive.length && !distinctive.some((term) => item.frequencies.has(term))) return false;
-    const strong = item.matched >= 2 || item.titleMatch || item.phraseMatch;
+    if (distinctive.length && !distinctive.some((term) => item.frequencies.has(term) || item.stems.has(stem(term)))) return false;
+    const needed = Math.min(2, terms.length);
+    const strong = item.matched >= needed || item.titleMatch || item.phraseMatch;
     return strong || item.score >= best * 0.62;
   });
 
@@ -509,6 +592,7 @@ async function startModel({ auto = false } = {}) {
         elements.progressBar.style.width = `${percent}%`;
         elements.progressPercent.textContent = `${percent}%`;
         elements.progressLabel.textContent = `Fetching ${model.file} · ${displaySize(received)} of ${displaySize(total)}`;
+        setSourceBadge('local', `◈ model ${percent}%`);
       }
       blob = new Blob(chunks);
     } else {
@@ -566,22 +650,23 @@ async function startModel({ auto = false } = {}) {
 function buildMessages(question, excerpts) {
   const sources = excerpts.length
     ? excerpts.map((item, index) =>
-        `[${index + 1}] ${item.doc.bundled ? `${item.doc.categoryLabel} › ${item.doc.name}` : item.doc.name}\n${item.text.slice(0, 620).trim()}`
+        `[${index + 1}] ${item.doc.bundled ? `${item.doc.categoryLabel} › ${item.doc.name}` : item.doc.name}\n${item.text.slice(0, EXCERPT_CHARS).trim()}`
       ).join('\n\n')
     : 'No matching passages were found in the knowledge library or your files.';
 
   const system = [
-    'You are Mox, a private assistant running inside the user\'s browser.',
-    'Answer the user\'s question using the SOURCES below. Name the source file you used.',
-    'If the sources do not contain the answer, say you could not find it in the library.',
-    'Reply in plain text, under 80 words, with no lists unless the user asks for one.',
+    'You are Mox, a careful assistant running privately in the user\'s browser.',
+    'Answer only from the SOURCES below, and cite the ones you use like [1] or [2].',
+    'If the sources do not answer the question, say "I could not find that in the library." and name what would help.',
+    'Be direct and specific: no preamble, no restating the question, no filler.',
+    'Plain text, at most 120 words. Use short lists only when the question asks for steps or options.',
     '',
     'SOURCES:',
     sources
   ].join('\n');
 
   const messages = [{ role: 'system', content: system }];
-  for (const turn of history.slice(-2)) messages.push(turn);
+  for (const turn of history.slice(-HISTORY_TURNS)) messages.push(turn);
   messages.push({ role: 'user', content: question });
   return messages;
 }
@@ -593,17 +678,18 @@ function chatMLPrompt(messages) {
   return messages.map((message) => `<|im_start|>${message.role}\n${message.content}<|im_end|>`).join('\n') + '\n<|im_start|>assistant\n';
 }
 
-async function streamChatML(messages, onToken) {
+async function streamChatML(messages, onToken, abortSignal) {
   let streamed = '';
   await engine.createCompletion({
     prompt: chatMLPrompt(messages),
     stream: true,
+    abortSignal,
     max_tokens: MAX_NEW_TOKENS,
-    temp: 0.25,
+    temp: 0.3,
     top_k: 40,
-    top_p: 0.9,
-    penalty_repeat: 1.12,
-    penalty_last_n: 64,
+    top_p: 0.92,
+    penalty_repeat: 1.15,
+    penalty_last_n: 96,
     stop: ['<|im_end|>', '<|endoftext|>', '<|im_start|>'],
     onData: (chunk) => {
       const piece = chunk?.choices?.[0]?.text ?? chunk?.choices?.[0]?.delta?.content;
@@ -615,27 +701,33 @@ async function streamChatML(messages, onToken) {
   return streamed;
 }
 
-async function generateAnswer(question, excerpts, onToken) {
+function wasAborted(error) {
+  return error?.name === 'WllamaAbortError' || error?.code === 'abort' || /abort/i.test(error?.message || '');
+}
+
+async function generateAnswer(question, excerpts, onToken, abortSignal) {
   const messages = buildMessages(question, excerpts);
   try {
-    return await chatCompletion(messages, onToken);
+    return await chatCompletion(messages, onToken, abortSignal);
   } catch (error) {
+    if (wasAborted(error)) throw error;
     console.warn('Chat template failed, using ChatML instead:', error);
-    return cleanupAnswer(await streamChatML(messages, onToken));
+    return cleanupAnswer(await streamChatML(messages, onToken, abortSignal));
   }
 }
 
-async function chatCompletion(messages, onToken) {
+async function chatCompletion(messages, onToken, abortSignal) {
   let streamed = '';
   const result = await engine.createChatCompletion({
     messages,
     stream: true,
+    abortSignal,
     max_tokens: MAX_NEW_TOKENS,
-    temp: 0.25,
+    temp: 0.3,
     top_k: 40,
-    top_p: 0.9,
-    penalty_repeat: 1.12,
-    penalty_last_n: 64,
+    top_p: 0.92,
+    penalty_repeat: 1.15,
+    penalty_last_n: 96,
     onData: (chunk) => {
       const piece = chunk?.choices?.[0]?.delta?.content;
       if (!piece) return;
@@ -648,28 +740,103 @@ async function chatCompletion(messages, onToken) {
 }
 
 function cleanupAnswer(text) {
-  return String(text || '')
+  let value = String(text || '')
     .replace(/<\|im_end\|>[\s\S]*$/g, '')
     .replace(/<\|.*?\|>/g, '')
     .replace(/^\s*(?:assistant|mox|user)\s*[:\-]\s*/i, '')
+    .replace(/[ \t]{2,}/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+
+  // Small models loop: drop a repeated trailing block.
+  const lines = value.split('\n');
+  const tail = lines.slice(-3).join('\n');
+  if (tail.length > 40) {
+    const earlier = value.slice(0, value.length - tail.length);
+    if (earlier.includes(tail.trim())) value = earlier.trim();
+  }
+  // Stop mid-sentence tails from looking like broken output.
+  if (value.length > 80 && !/[.!?…"')\]]$/.test(value)) {
+    const lastStop = Math.max(value.lastIndexOf('. '), value.lastIndexOf('? '), value.lastIndexOf('! '));
+    if (lastStop > value.length * 0.6) value = value.slice(0, lastStop + 1);
+  }
+  return value;
 }
 
 /* -------------------------------------------------------------------- chat */
 
-function citationPills(excerpts) {
-  const labels = new Map();
-  for (const item of excerpts) {
-    labels.set(item.doc.id, item.doc.bundled ? `${item.doc.categoryLabel} › ${item.doc.name}` : item.doc.name);
-  }
+function citationPills(excerpts, record) {
   const wrap = document.createElement('div');
   wrap.className = 'sources-cited';
-  wrap.innerHTML = `<span>Sources</span>${[...labels.values()].map((label) => `<span class="source-pill">${escapeHTML(label)}</span>`).join('')}`;
+  const label = document.createElement('span');
+  label.textContent = 'Sources';
+  wrap.append(label);
+
+  const seen = new Set();
+  excerpts.forEach((item, index) => {
+    if (seen.has(item.doc.id)) return;
+    seen.add(item.doc.id);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'source-pill';
+    button.textContent = item.doc.bundled ? `${item.doc.categoryLabel} › ${item.doc.name}` : item.doc.name;
+    button.title = 'Open the passage Mox used';
+    button.addEventListener('click', () => openPassage(record, index));
+    wrap.append(button);
+  });
   return wrap;
 }
 
-function renderMessage(role, text, excerpts = []) {
+function copyText(value) {
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
+  const area = document.createElement('textarea');
+  area.value = value;
+  area.style.position = 'fixed';
+  area.style.opacity = '0';
+  document.body.append(area);
+  area.select();
+  try { document.execCommand?.('copy'); } finally { area.remove(); }
+  return Promise.resolve();
+}
+
+function attachActions(body, record) {
+  body.querySelector('.msg-actions')?.remove();
+  if (!record) return;
+  const row = document.createElement('div');
+  row.className = 'msg-actions';
+
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.className = 'msg-action';
+  copy.textContent = 'Copy';
+  copy.addEventListener('click', async () => {
+    await copyText(record.text);
+    copy.textContent = 'Copied';
+    copy.classList.add('done');
+    setTimeout(() => { copy.textContent = 'Copy'; copy.classList.remove('done'); }, 1400);
+  });
+  row.append(copy);
+
+  if (record.role === 'assistant') {
+    const again = document.createElement('button');
+    again.type = 'button';
+    again.className = 'msg-action';
+    again.textContent = 'Regenerate';
+    again.disabled = false;
+    again.addEventListener('click', () => regenerate(record));
+    row.append(again);
+  }
+
+  if (record.stats) {
+    const stats = document.createElement('span');
+    stats.className = 'msg-stats';
+    stats.textContent = record.stats;
+    row.append(stats);
+  }
+  body.append(row);
+}
+
+function renderMessage(role, text, excerpts = [], record = null) {
   const row = document.createElement('article');
   row.className = `message ${role}`;
   const body = document.createElement('div');
@@ -679,8 +846,9 @@ function renderMessage(role, text, excerpts = []) {
   if (role === 'assistant' && text) body.innerHTML = renderRich(text);
   else body.textContent = text;
   row.append(body);
-  if (excerpts.length) body.append(citationPills(excerpts));
+  if (excerpts?.length && text) body.append(citationPills(excerpts, record));
   elements.messages.append(row);
+  if (record && text) attachActions(body, record);
   return body;
 }
 
@@ -689,11 +857,82 @@ function renderMessage(role, text, excerpts = []) {
 function activeChat() {
   let chat = conversations.find((entry) => entry.id === activeChatId);
   if (!chat) {
-    chat = { id: makeId(), title: '', records: [] };
+    chat = { id: makeId(), records: [], updatedAt: Date.now() };
     conversations.push(chat);
     activeChatId = chat.id;
   }
   return chat;
+}
+
+/* Conversations live in IndexedDB so a reload keeps your history. */
+function scheduleSaveChats() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveChats, 300);
+}
+
+async function saveChats() {
+  try {
+    const chats = conversations
+      .filter((chat) => chat.records.length)
+      .slice(-CHAT_LIMIT)
+      .map((chat) => ({
+        id: chat.id,
+        updatedAt: chat.updatedAt || Date.now(),
+        records: chat.records.map((record) => ({
+          role: record.role,
+          text: record.text.slice(0, SAVED_TEXT_LIMIT),
+          stats: record.stats || '',
+          excerpts: (record.excerpts || []).slice(0, MAX_EXCERPTS).map((item) => ({
+            text: item.text.slice(0, EXCERPT_CHARS),
+            doc: {
+              id: item.doc.id, name: item.doc.name, path: item.doc.path || '',
+              categoryLabel: item.doc.categoryLabel || '', bundled: Boolean(item.doc.bundled)
+            }
+          }))
+        }))
+      }));
+    await writeMeta(CHAT_META_KEY, { activeChatId, chats });
+  } catch (error) {
+    console.warn('Could not save chats:', error);
+  }
+}
+
+async function restoreChats() {
+  const saved = await readMeta(CHAT_META_KEY);
+  if (!saved?.chats?.length) return false;
+  conversations.length = 0;
+  for (const chat of saved.chats) {
+    conversations.push({
+      id: chat.id,
+      updatedAt: chat.updatedAt || Date.now(),
+      records: (chat.records || [])
+        .filter((record) => record && (record.role === 'user' || record.role === 'assistant') && typeof record.text === 'string')
+        .map((record) => ({
+          role: record.role,
+          text: record.text,
+          stats: record.stats || '',
+          excerpts: record.excerpts || []
+        }))
+    });
+  }
+  const target = conversations.find((chat) => chat.id === saved.activeChatId)
+    || conversations.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+  activeChatId = target?.id || null;
+  return true;
+}
+
+function deleteChat(id) {
+  const index = conversations.findIndex((chat) => chat.id === id);
+  if (index < 0) return;
+  conversations.splice(index, 1);
+  if (activeChatId === id) {
+    activeChatId = null;
+    resetChat();
+  } else {
+    renderChatList();
+  }
+  scheduleSaveChats();
+  showToast('Chat deleted.');
 }
 
 function chatTitle(chat) {
@@ -705,15 +944,33 @@ function chatTitle(chat) {
 
 function renderChatList() {
   elements.chatList.textContent = '';
-  const started = conversations.filter((chat) => chat.records.length);
+  const started = conversations
+    .filter((chat) => chat.records.length)
+    .sort((a, b) => (a.updatedAt || 0) - (b.updatedAt || 0));
   elements.chatEmpty.hidden = started.length > 0;
   for (const chat of started.slice().reverse()) {
+    const item = document.createElement('div');
+    item.className = `chat-item${chat.id === activeChatId ? ' active' : ''}`;
+
     const entry = document.createElement('button');
-    entry.className = `chat-entry${chat.id === activeChatId ? ' active' : ''}`;
+    entry.type = 'button';
+    entry.className = 'chat-entry';
     entry.textContent = chatTitle(chat);
     entry.title = chatTitle(chat);
+    entry.setAttribute('aria-current', chat.id === activeChatId ? 'true' : 'false');
     entry.addEventListener('click', () => openConversation(chat.id));
-    elements.chatList.append(entry);
+    item.append(entry);
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'chat-delete';
+    remove.textContent = '×';
+    remove.title = 'Delete this chat';
+    remove.setAttribute('aria-label', `Delete chat: ${chatTitle(chat)}`);
+    remove.addEventListener('click', (event) => { event.stopPropagation(); deleteChat(chat.id); });
+    item.append(remove);
+
+    elements.chatList.append(item);
   }
 }
 
@@ -722,14 +979,16 @@ function openConversation(id) {
   if (!chat || generating) return;
   activeChatId = chat.id;
   elements.messages.textContent = '';
-  for (const record of chat.records) renderMessage(record.role, record.text, record.excerpts || []);
+  for (const record of chat.records) renderMessage(record.role, record.text, record.excerpts || [], record);
   const empty = chat.records.length === 0;
   elements.welcome.hidden = !empty;
   elements.quickStart.hidden = !empty;
   history = chatRecordsToHistory(chat);
   renderChatList();
   updateComposer();
-  elements.conversation.scrollTop = elements.conversation.scrollHeight;
+  scheduleSaveChats();
+  closeDrawer();
+  scrollToBottom(true);
 }
 
 function chatRecordsToHistory(chat) {
@@ -739,23 +998,42 @@ function chatRecordsToHistory(chat) {
   }));
 }
 
-function appendMessage(role, text, excerpts = []) {
-  const body = renderMessage(role, text, excerpts);
+function scrollToBottom(force = false) {
+  const box = elements.conversation;
+  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 160;
+  if (force || nearBottom) box.scrollTop = box.scrollHeight;
+}
+
+function addRecord(role, text, excerpts = []) {
   const chat = activeChat();
-  const record = { role, text, excerpts };
+  const record = { role, text, excerpts, stats: '', at: Date.now() };
   chat.records.push(record);
+  chat.updatedAt = Date.now();
+  const body = renderMessage(role, text, excerpts, record);
   body.__moxRecord = record;
   elements.welcome.hidden = true;
   elements.quickStart.hidden = true;
   renderChatList();
-  elements.conversation.scrollTop = elements.conversation.scrollHeight;
-  return body;
+  scrollToBottom();
+  scheduleSaveChats();
+  return record;
+}
+
+function appendMessage(role, text, excerpts = []) {
+  const record = addRecord(role, text, excerpts);
+  return elements.messages.lastElementChild.querySelector('.message-body') || record;
 }
 
 function updateComposer() {
   const usable = modelReady || searchOnly;
+  const streaming = generating && modelReady;
   elements.input.disabled = !usable || generating;
-  elements.send.disabled = !usable || generating || !elements.input.value.trim();
+  elements.form.setAttribute('aria-busy', String(streaming));
+  elements.send.classList.toggle('stop', streaming);
+  elements.send.innerHTML = streaming ? '<span aria-hidden="true"></span>' : '↑';
+  elements.send.setAttribute('aria-label', streaming ? 'Stop generating' : 'Send message');
+  elements.send.title = streaming ? 'Stop generating' : 'Send message';
+  elements.send.disabled = streaming ? false : (!usable || !elements.input.value.trim());
   const sources = allKnowledge().length;
   if (generating) elements.hint.textContent = 'Generating on this device…';
   else if (modelReady) elements.hint.textContent = `${sources} searchable document${sources === 1 ? '' : 's'} · ${loadedModel?.parameters || 'local model'}`;
@@ -786,60 +1064,137 @@ function fallbackAnswer(excerpts) {
   ).join('\n\n')}`;
 }
 
+function announce(text) {
+  if (!elements.srStatus) return;
+  elements.srStatus.textContent = '';
+  setTimeout(() => { elements.srStatus.textContent = text; }, 60);
+}
+
+function stopGeneration() {
+  if (!abortController) return;
+  abortController.abort();
+}
+
 async function handleSubmit(event) {
   event.preventDefault();
+  if (generating) { stopGeneration(); return; }
   const question = elements.input.value.trim();
-  if (!question || generating || !(modelReady || searchOnly)) return;
+  if (!question || !(modelReady || searchOnly)) return;
 
-  appendMessage('user', question);
   elements.input.value = '';
   elements.input.style.height = 'auto';
-  generating = true;
-  updateComposer();
+  addRecord('user', question);
+  const userRecord = activeChat().records[activeChat().records.length - 1];
   const excerpts = retrieve(question);
-
-  if (modelReady) {
-    elements.typing.hidden = false;
-    const body = appendMessage('assistant', '');
-    const cursor = document.createElement('span');
-    cursor.className = 'cursor-blink';
-    body.append(cursor);
-    let streamed = '';
-    try {
-      const answer = await generateAnswer(question, excerpts, (token) => {
-        streamed += token;
-        cursor.remove();
-        body.textContent = streamed;
-        body.append(cursor);
-        elements.conversation.scrollTop = elements.conversation.scrollHeight;
-      });
-      cursor.remove();
-      const final = cleanupAnswer(answer || streamed);
-      if (!final || final.length < 2) throw new Error('Empty response');
-      body.innerHTML = renderRich(final);
-      if (excerpts.length) body.append(citationPills(excerpts));
-      if (body.__moxRecord) body.__moxRecord.text = final;
-      history.push({ role: 'user', content: question.slice(0, 600) });
-      history.push({ role: 'assistant', content: final.slice(0, 600) });
-      history = history.slice(-4);
-    } catch (error) {
-      console.error('Inference failed:', error);
-      cursor.remove();
-      body.closest('.message')?.remove();
-      const chat = activeChat();
-      if (body.__moxRecord) chat.records = chat.records.filter((record) => record !== body.__moxRecord);
-      appendMessage('assistant', fallbackAnswer(excerpts), excerpts);
-      showToast('The model could not answer; showing matching passages instead.');
-    } finally {
-      elements.typing.hidden = true;
-    }
-  } else {
-    appendMessage('assistant', fallbackAnswer(excerpts), excerpts);
-  }
-
-  generating = false;
   updateComposer();
-  elements.input.focus();
+
+  if (!modelReady) {
+    addRecord('assistant', fallbackAnswer(excerpts), excerpts);
+    updateComposer();
+    elements.input.focus();
+    return;
+  }
+  await runGeneration(question, excerpts, userRecord);
+}
+
+async function runGeneration(question, excerpts, userRecord) {
+  generating = true;
+  abortController = new AbortController();
+  updateComposer();
+  elements.typing.hidden = false;
+
+  const answer = addRecord('assistant', '', excerpts);
+  const body = elements.messages.lastElementChild.querySelector('.message-body');
+  const cursor = document.createElement('span');
+  cursor.className = 'cursor-blink';
+  body.append(cursor);
+
+  let streamed = '';
+  const started = performance.now();
+  let stopped = false;
+
+  try {
+    const result = await generateAnswer(question, excerpts, (token) => {
+      streamed += token;
+      cursor.remove();
+      body.textContent = streamed;
+      body.append(cursor);
+      scrollToBottom();
+    }, abortController.signal);
+
+    cursor.remove();
+    const final = cleanupAnswer(result || streamed);
+    if (!final || final.length < 2) throw new Error('Empty response');
+    paintAnswer(answer, body, final, excerpts, started);
+  } catch (error) {
+    cursor.remove();
+    if (wasAborted(error)) {
+      stopped = true;
+      const partial = cleanupAnswer(streamed);
+      if (partial.length > 1) {
+        paintAnswer(answer, body, `${partial} …`, excerpts, started);
+        showToast('Stopped. The answer above is what the model had produced.');
+      } else {
+        body.closest('.message')?.remove();
+        activeChat().records = activeChat().records.filter((record) => record !== answer);
+        showToast('Stopped.');
+      }
+    } else {
+      console.error('Inference failed:', error);
+      body.closest('.message')?.remove();
+      activeChat().records = activeChat().records.filter((record) => record !== answer);
+      addRecord('assistant', fallbackAnswer(excerpts), excerpts);
+      showToast('The model could not answer; showing matching passages instead.');
+    }
+  } finally {
+    elements.typing.hidden = true;
+    generating = false;
+    abortController = null;
+    if (!stopped) announce('Answer ready.');
+    activeChat().updatedAt = Date.now();
+    renderChatList();
+    updateComposer();
+    scheduleSaveChats();
+    elements.input.focus();
+  }
+}
+
+function paintAnswer(record, body, text, excerpts, started) {
+  const seconds = Math.max(0.1, (performance.now() - started) / 1000);
+  // Rough token estimate for a progress hint; exact counts are not exposed.
+  const tokens = Math.max(1, Math.round(text.length / 4));
+  record.text = text;
+  record.excerpts = excerpts;
+  record.stats = `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)}s · ${Math.round(tokens / seconds)} tok/s`;
+  body.innerHTML = renderRich(text);
+  if (excerpts?.length) body.append(citationPills(excerpts, record));
+  attachActions(body, record);
+
+  const chat = activeChat();
+  chat.updatedAt = Date.now();
+  history = chatRecordsToHistory(chat);
+  renderChatList();
+  scheduleSaveChats();
+  scrollToBottom();
+}
+
+async function regenerate(record) {
+  if (generating || !modelReady) {
+    showToast(modelReady ? 'One answer at a time — wait for this one to finish.' : 'The model is not running.');
+    return;
+  }
+  const chat = activeChat();
+  const index = chat.records.indexOf(record);
+  if (index < 0) return;
+  const question = [...chat.records.slice(0, index)].reverse().find((entry) => entry.role === 'user');
+  if (!question) return;
+
+  chat.records.splice(index);
+  elements.messages.textContent = '';
+  history = chatRecordsToHistory(chat);
+  for (const entry of chat.records) renderMessage(entry.role, entry.text, entry.excerpts || [], entry);
+  const excerpts = record.excerpts?.length ? record.excerpts : retrieve(question.text);
+  await runGeneration(question.text, excerpts, question);
 }
 
 function resetChat() {
@@ -853,6 +1208,7 @@ function resetChat() {
   activeChat();
   renderChatList();
   updateComposer();
+  scheduleSaveChats();
   elements.input.focus();
 }
 
@@ -890,7 +1246,90 @@ async function importFiles(fileList) {
   else showToast(skipped ? 'Some files could not be read. PDFs may need a reload on first use.' : 'Those files are already in your workspace.');
 }
 
+function exportActiveChat() {
+  const chat = conversations.find((entry) => entry.id === activeChatId);
+  if (!chat?.records.length) { showToast('This chat is empty.'); return; }
+  const lines = [`# ${chatTitle(chat)}`, '', `Saved from Mox · ${new Date().toLocaleString()}`, ''];
+  for (const record of chat.records) {
+    lines.push(record.role === 'user' ? `**You:** ${record.text}` : `**Mox:** ${record.text}`);
+    const docs = (record.excerpts || []).map((item) => item.doc.name);
+    if (docs.length) lines.push('', `Sources: ${[...new Set(docs)].join(', ')}`);
+    lines.push('');
+  }
+  const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${chatTitle(chat).replace(/[^\w\- ]+/g, '').trim().slice(0, 40) || 'mox-chat'}.md`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast('Chat exported as Markdown.');
+}
+
+/* ------------------------------------------------------------------ drawer */
+
+function openDrawer() {
+  document.body.classList.add('drawer-open');
+  elements.sidebarScrim.hidden = false;
+  elements.sidebarToggle.setAttribute('aria-expanded', 'true');
+  const first = document.querySelector('.sidebar .chat-entry, .sidebar .side-row');
+  first?.focus?.();
+}
+
+function closeDrawer() {
+  if (!document.body.classList.contains('drawer-open')) return;
+  document.body.classList.remove('drawer-open');
+  elements.sidebarScrim.hidden = true;
+  elements.sidebarToggle.setAttribute('aria-expanded', 'false');
+}
+
 /* ------------------------------------------------------------------- modal */
+
+function revealModal() {
+  lastFocused = document.activeElement;
+  elements.modal.hidden = false;
+  const target = elements.modal.querySelector('.modal-done, .modal-close, button');
+  setTimeout(() => target?.focus?.(), 0);
+}
+
+function closeModal() {
+  if (elements.modal.hidden) return;
+  elements.modal.hidden = true;
+  if (lastFocused && document.contains(lastFocused)) lastFocused.focus?.();
+  lastFocused = null;
+}
+
+function openPassage(record, index) {
+  const item = record?.excerpts?.[index];
+  if (!item) return;
+  const name = item.doc.bundled ? `${item.doc.categoryLabel} › ${item.doc.name}` : item.doc.name;
+  elements.modalKicker.textContent = 'PASSAGE MOX USED';
+  elements.modalTitle.textContent = name;
+  elements.modalCopy.innerHTML = `
+    <p class="passage-meta">${escapeHTML(item.doc.bundled ? 'from the knowledge library' : 'from a file you added')}${item.doc.path ? ` · <code>${escapeHTML(item.doc.path)}</code>` : ''}</p>
+    <div class="passage"></div>
+    <div class="source-actions">
+      <button class="modal-secondary" id="copyPassage">Copy passage</button>
+      ${item.doc.bundled ? '<button class="modal-secondary" id="readWholeDoc">Read the whole document</button>' : ''}
+    </div>`;
+  const box = elements.modalCopy.querySelector('.passage');
+  box.textContent = tidySnippet(item.text, 1600);
+  elements.modalCopy.querySelector('#copyPassage').addEventListener('click', async (event) => {
+    await copyText(box.textContent);
+    event.target.textContent = 'Copied';
+    setTimeout(() => { event.target.textContent = 'Copy passage'; }, 1400);
+  });
+  elements.modalCopy.querySelector('#readWholeDoc')?.addEventListener('click', () => {
+    const doc = libraryDocuments.find((entry) => entry.path === item.doc.path);
+    if (!doc) { showToast('That document is not loaded right now.'); return; }
+    elements.modalTitle.textContent = doc.name;
+    box.textContent = doc.chunks.join('\n\n');
+    box.scrollTop = 0;
+  });
+  revealModal();
+}
 
 function modelListMarkup() {
   const available = modelManifest?.available || [];
@@ -922,8 +1361,15 @@ function openModal(kind = 'privacy', category = null) {
       ${modelListMarkup()}
       <p><strong>Upgrade:</strong> run <code>python3 tools/fetch_model.py --preset qwen-0.5b</code> for a 0.5B model, or drop any <code>.gguf</code> file into <code>models/</code> and add it to <code>models/manifest.json</code>. Larger models are smarter but slower on a CPU.</p>
       <p><strong>Knowledge library:</strong> ${libraryDocuments.length} documents across ${new Set(libraryDocuments.map((doc) => doc.categoryLabel)).size} topics, indexed in your browser.<br>
-      <strong>Your files:</strong> ${userDocuments.length} imported document${userDocuments.length === 1 ? '' : 's'} in IndexedDB.</p>
-      <button class="modal-secondary" id="modelUpload">Load a .gguf from this computer</button>`;
+      <strong>Your files:</strong> ${userDocuments.length} imported document${userDocuments.length === 1 ? '' : 's'} in IndexedDB.<br>
+      <strong>Chats:</strong> ${conversations.filter((chat) => chat.records.length).length} saved in this browser.</p>
+      <div class="source-actions">
+        <button class="modal-secondary" id="modelUpload">Load a .gguf from this computer</button>
+        <button class="modal-secondary" id="exportChat">Export this chat</button>
+        <button class="modal-secondary" id="clearChats">Delete all chats</button>
+      </div>
+      <p style="margin-top:16px"><strong>Keyboard</strong><br>
+      <code>⌘K</code> / <code>Ctrl K</code> new chat · <code>⌘/</code> focus the composer · <code>Enter</code> send · <code>Shift Enter</code> new line · <code>Esc</code> close.</p>`;
   } else if (kind === 'library') {
     const groups = new Map();
     for (const doc of libraryDocuments) {
@@ -942,8 +1388,21 @@ function openModal(kind = 'privacy', category = null) {
           <h3>${escapeHTML(categoryName(key))} · ${docs.length}</h3>
           ${docs.map((doc) => `<div class="library-doc">${escapeHTML(doc.name)}<span>${doc.chunks.length} passages</span></div>`).join('')}
         </div>`).join('');
-    elements.modalCopy.innerHTML = `${sections || '<p>No documents loaded yet.</p>'}
+    elements.modalCopy.innerHTML = `
+      ${libraryDocuments.length ? '<input class="library-filter" id="libraryFilter" type="search" placeholder="Filter documents…" aria-label="Filter documents">' : ''}
+      <div id="libraryBody">${sections || '<p>No documents loaded yet.</p>'}</div>
       <p>Ask a question and Mox retrieves the most relevant passages from these files. To add your own, use <strong>Add a folder</strong>, or drop files into <code>knowledge/</code> and run <code>python3 tools/build_knowledge_index.py</code>.</p>`;
+    const filter = elements.modalCopy.querySelector('#libraryFilter');
+    filter?.addEventListener('input', () => {
+      const needle = filter.value.trim().toLowerCase();
+      elements.modalCopy.querySelectorAll('.library-doc').forEach((row) => {
+        row.style.display = !needle || row.textContent.toLowerCase().includes(needle) ? '' : 'none';
+      });
+      elements.modalCopy.querySelectorAll('.library-group').forEach((group) => {
+        const visible = [...group.querySelectorAll('.library-doc')].some((row) => row.style.display !== 'none');
+        group.style.display = visible ? '' : 'none';
+      });
+    });
   } else {
     elements.modalCopy.innerHTML = `
       <p>The model is a ${escapeHTML(describeModel())} GGUF file served by this website and executed in your browser by llama.cpp (WebAssembly). Your questions, your imported files, and the passages retrieved for them never leave this device.</p>
@@ -952,16 +1411,31 @@ function openModal(kind = 'privacy', category = null) {
       <p><strong>Storage:</strong> imported files, the library cache, and the browser's copy of the model live in IndexedDB. Clearing site data removes them.</p>`;
   }
 
-  elements.modal.hidden = false;
+  revealModal();
   const upload = $('#modelUpload');
   if (upload) upload.addEventListener('click', () => elements.modelPicker.click());
+
+  const exportButton = $('#exportChat');
+  if (exportButton) exportButton.addEventListener('click', exportActiveChat);
+
+  const clearButton = $('#clearChats');
+  if (clearButton) clearButton.addEventListener('click', async () => {
+    if (!conversations.some((chat) => chat.records.length)) { showToast('There are no saved chats.'); return; }
+    if (!window.confirm('Delete every chat in this browser? This cannot be undone.')) return;
+    conversations.length = 0;
+    activeChatId = null;
+    await saveChats();
+    closeModal();
+    resetChat();
+    showToast('All chats deleted.');
+  });
   elements.modalCopy.querySelectorAll('[data-model]').forEach((button) => {
     button.addEventListener('click', async () => {
       const id = button.dataset.model;
       if (id === chosenModelId) return;
       chosenModelId = id;
       await writeMeta('modelChoice', id);
-      elements.modal.hidden = true;
+      closeModal();
       showToast('Reloading with the selected model…');
       location.reload();
     });
@@ -971,6 +1445,15 @@ function openModal(kind = 'privacy', category = null) {
 /* ------------------------------------------------------------------ wiring */
 
 $('#loadModel').addEventListener('click', () => startModel());
+$('#sidebarToggle').addEventListener('click', () => {
+  if (document.body.classList.contains('drawer-open')) closeDrawer();
+  else openDrawer();
+});
+elements.sidebarScrim.addEventListener('click', closeDrawer);
+const isNarrow = () => Boolean(window.matchMedia?.('(max-width: 700px)').matches);
+document.querySelectorAll('.sidebar .side-row').forEach((row) => {
+  row.addEventListener('click', () => { if (isNarrow()) closeDrawer(); });
+});
 $('#addFolder').addEventListener('click', () => elements.folderPicker.click());
 $('#quickFolder').addEventListener('click', () => elements.folderPicker.click());
 $('#addFiles').addEventListener('click', () => elements.filePicker.click());
@@ -984,9 +1467,19 @@ $('#quickPrivacy').addEventListener('click', () => openModal('privacy'));
 $('#settingsButton').addEventListener('click', () => openModal('settings'));
 $('#helpButton').addEventListener('click', () => openModal('privacy'));
 $('#privacyLink').addEventListener('click', () => openModal('privacy'));
-$('#modalClose').addEventListener('click', () => { elements.modal.hidden = true; });
-$('#modalDone').addEventListener('click', () => { elements.modal.hidden = true; });
-elements.modal.addEventListener('click', (event) => { if (event.target === elements.modal) elements.modal.hidden = true; });
+$('#modalClose').addEventListener('click', closeModal);
+$('#modalDone').addEventListener('click', closeModal);
+elements.modal.addEventListener('click', (event) => { if (event.target === elements.modal) closeModal(); });
+elements.modal.addEventListener('keydown', (event) => {
+  if (event.key !== 'Tab') return;
+  const focusables = [...elements.modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+    .filter((node) => !node.disabled && node.offsetParent !== null);
+  if (!focusables.length) return;
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+});
 
 elements.filePicker.addEventListener('change', (event) => { importFiles(event.target.files); event.target.value = ''; });
 elements.folderPicker.addEventListener('change', (event) => { importFiles(event.target.files); event.target.value = ''; });
@@ -995,7 +1488,7 @@ elements.modelPicker.addEventListener('change', async (event) => {
   event.target.value = '';
   if (!file) return;
   if (!/\.gguf$/i.test(file.name)) { showToast('Choose a .gguf model file.'); return; }
-  elements.modal.hidden = true;
+  closeModal();
   await loadModelFile(file);
 });
 elements.form.addEventListener('submit', handleSubmit);
@@ -1026,9 +1519,47 @@ document.addEventListener('keydown', (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault();
     resetChat();
+    closeDrawer();
     elements.input.focus();
   }
-  if (event.key === 'Escape') elements.modal.hidden = true;
+  if ((event.metaKey || event.ctrlKey) && event.key === '/') {
+    event.preventDefault();
+    elements.input.focus();
+  }
+  if (event.key === 'Escape') {
+    if (!elements.modal.hidden) closeModal();
+    else closeDrawer();
+  }
+});
+
+// Drop files anywhere on the composer area to add them to this chat.
+['dragenter', 'dragover'].forEach((type) => {
+  elements.form.addEventListener(type, (event) => {
+    if (!event.dataTransfer?.types?.includes('Files')) return;
+    event.preventDefault();
+    elements.form.classList.add('dragging');
+  });
+});
+['dragleave', 'dragend', 'drop'].forEach((type) => {
+  elements.form.addEventListener(type, () => elements.form.classList.remove('dragging'));
+});
+elements.form.addEventListener('drop', (event) => {
+  const files = event.dataTransfer?.files;
+  if (!files?.length) return;
+  event.preventDefault();
+  importFiles(files);
+});
+
+// Paste a PDF or note straight into the composer.
+document.addEventListener('paste', (event) => {
+  const files = [...(event.clipboardData?.files || [])];
+  if (files.length) importFiles(files);
+});
+
+window.addEventListener('offline', () => showToast('Offline. Mox keeps working from what is already on this device.'));
+window.addEventListener('online', () => showToast('Back online.'));
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveChats();
 });
 
 async function loadModelFile(file) {
@@ -1088,6 +1619,10 @@ async function loadModelFile(file) {
     }
     chosenModelId = await readMeta('modelChoice');
     renderSources();
+    if (await restoreChats()) {
+      renderChatList();
+      if (activeChatId) openConversation(activeChatId);
+    }
   } catch (error) {
     console.error('Could not open local workspace:', error);
     showToast('Local browser storage is unavailable. Try a recent version of Chrome, Edge, or Firefox.');
@@ -1104,17 +1639,33 @@ async function loadModelFile(file) {
   } else {
     setSourceBadge('remote', '◈ no model file');
   }
-  await loadKnowledgeLibrary();
-  await startModel({ auto: true });
+  // A reload with no connection still works: the service worker keeps a copy of
+// the shell. Browsers only allow this on https or localhost.
+if ('serviceWorker' in navigator && location.protocol !== 'file:' && !location.search.includes('nosw')) {
+  const registerWorker = () => {
+    navigator.serviceWorker.register(new URL('sw.js', import.meta.url).href, { scope: './' })
+      .catch((error) => console.warn('Offline support unavailable:', error));
+  };
+  if (document.readyState === 'complete') registerWorker();
+  else window.addEventListener('load', registerWorker, { once: true });
+}
+
+// The library index and the model download are independent: start both now.
+  await Promise.all([loadKnowledgeLibrary(), startModel({ auto: true })]);
+  renderChatList();
 })();
 
 // Exposed for debugging in the browser console and for automated smoke tests.
 window.__mox = {
   retrieve, allKnowledge, renderRich, makeChunks, openModal, resetChat,
+  openConversation, deleteChat, openPassage, saveChats, restoreChats, closeDrawer, openDrawer,
+  conversations, get activeChatId() { return activeChatId; },
   state: () => ({
     modelReady, searchOnly, libraryEnabled, generating,
     libraryCount: libraryDocuments.length, userCount: userDocuments.length,
     availableModels: (modelManifest?.available || []).map((entry) => entry.id),
-    chosenModelId, loadedModel: loadedModel?.id || null
+    chosenModelId, loadedModel: loadedModel?.id || null,
+    chats: conversations.filter((chat) => chat.records.length).length,
+    messages: conversations.reduce((sum, chat) => sum + chat.records.length, 0)
   })
 };

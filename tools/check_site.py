@@ -39,8 +39,8 @@ for match in re.finditer(r'(?:src|href)="([^"]+)"', html):
 # 2) Element ids the app queries must exist in the markup.
 ids_in_html = set(re.findall(r'\bid="([^"]+)"', html))
 ids_in_app = set(re.findall(r"\$\('#([A-Za-z0-9_-]+)'\)", app))
-# Rendered by app.js into the modal rather than present in index.html.
-DYNAMIC_IDS = {"modelUpload"}
+# Rendered by app.js into modals/toasts rather than present in index.html.
+DYNAMIC_IDS = {"modelUpload", "exportChat", "clearChats", "libraryFilter", "copyPassage", "readWholeDoc"}
 for identifier in sorted(ids_in_app - ids_in_html - DYNAMIC_IDS):
     problems.append(f"app.js looks up #{identifier} but index.html has no such id")
 
@@ -52,6 +52,7 @@ runtime_assets = [
     "vendor/pdfjs/pdf.worker.min.js",
     "knowledge/index.json",
     "models/manifest.json",
+    "sw.js",
 ]
 for relative in runtime_assets:
     if not (ROOT / relative).exists():

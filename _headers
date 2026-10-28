@@ -10,3 +10,7 @@
   Cache-Control: public, max-age=604800
 /vendor/*
   Cache-Control: public, max-age=604800
+
+# The service worker must be revalidated so a deploy is picked up promptly.
+/sw.js
+  Cache-Control: public, max-age=0, must-revalidate

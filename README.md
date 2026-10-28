@@ -118,12 +118,40 @@ inserted into the prompt as sources. Answers cite the documents used.
 
 ## What you get in the UI
 
-- **Streaming answers** from the local model, with source pills under each reply.
+- **Conversations that persist.** Every chat is stored in IndexedDB, listed in the
+  sidebar, and restored on reload — switch back to an earlier one, or delete it.
+- **Streaming answers** with **Stop** while it writes, then **Copy** and **Regenerate**
+  (which re-asks the same question with the same sources).
+- **Sources you can open.** Each answer lists the passages it used; click one to read
+  the exact text, copy the passage, or open the whole document.
+- **Files by drag, drop, or paste** — PDF, Markdown, text, CSV, JSON, HTML, logs — read
+  on-device and searchable alongside the bundled library.
+- **Offline after the first visit.** A service worker keeps the page itself, so a reload
+  with no connection still opens Mox and answers from the loaded model.
+- **Keyboard first:** `⌘K` / `Ctrl K` new chat, `⌘/` focus the composer, `Enter` send,
+  `Shift Enter` newline, `Esc` close, `Tab` cycles inside dialogs.
 - **Search-only mode:** if the model cannot start, questions still return the matching
   passages instead of failing.
-- **Knowledge toggle** in the sidebar, plus a browsable library by topic.
-- **Model panel** listing every model found on disk, with a picker and a `.gguf` upload.
-- **Dark theme** throughout, responsive down to phone widths.
+- **Knowledge toggle** in the sidebar, a filterable library by topic, chat export as
+  Markdown, and a model panel with a `.gguf` picker.
+- **Phone layout** with a slide-in chat drawer and a composer pinned to the bottom.
+- **Black and white** throughout, 21:1 contrast for body text.
+
+## Development
+
+```sh
+python3 tools/build_knowledge_index.py   # after editing knowledge/
+python3 tools/check_site.py              # asset, id, index, GGUF, and branding gate
+python3 run.py                           # serve locally on http://localhost:8000
+
+npm install --no-save jsdom fake-indexeddb   # dev-only, for the UI tests
+node tests/ui-check.mjs                      # 40 interface checks in a headless DOM
+```
+
+`tests/ui-check.mjs` boots the real `index.html` and `app.js`, then drives them the way
+a person would: ask a question, open a source passage, open the phone drawer, reload to
+prove the history survived, switch chats, delete one. It also asserts the markdown
+renderer and retrieval quality, including singular/plural agreement.
 
 ## Project layout
 
@@ -135,6 +163,8 @@ inserted into the prompt as sources. Answers cite the documents used.
 - `tools/fetch_model.py` — download extra GGUF models into `models/`
 - `tools/build_knowledge_index.py` — rebuild `knowledge/index.json`
 - `tools/check_site.py` — verify assets, ids, manifest and knowledge integrity
+- `sw.js` — service worker for offline reloads (network-first, cache as fallback)
+- `tests/ui-check.mjs` — headless UI checks (dev only)
 - `run.py` — dependency-free static server with correct `.wasm` / `.mjs` / `.gguf` MIME types
 
 ## Privacy
