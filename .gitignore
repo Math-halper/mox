@@ -1,0 +1,12 @@
+__pycache__/
+.DS_Store
+
+# Model weights are downloaded locally with tools/fetch_model.py.
+# They are large binaries, so they stay out of git; the app serves them from
+# ./models when they exist and falls back to Hugging Face when they do not.
+models/**/*.onnx
+models/**/*.onnx_data
+models/**/*.safetensors
+models/**/*.bin
+models/**/*.gguf
+models/**/*.part

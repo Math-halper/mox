@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0a0a0f">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="UFY Dark — a private AI workspace that runs a language model in your browser and answers from the knowledge on this site.">
+  <title>UFY Dark — your private AI workspace</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="aurora" aria-hidden="true"></div>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Workspace">
+      <a class="brand" href="#" aria-label="UFY home">
+        <span class="brand-mark">u<span>f</span></span>
+        <span class="brand-name">ufy<span class="brand-period">.</span></span>
+        <span class="brand-tag">dark</span>
+      </a>
+
+      <button class="new-chat" id="newChat"><span class="plus">＋</span> New conversation <kbd>⌘K</kbd></button>
+
+      <div class="side-label">YOUR WORKSPACE</div>
+      <div class="workspace-card">
+        <div class="workspace-icon">✳</div>
+        <div><strong>Personal workspace</strong><span>Private on this device</span></div>
+        <span class="lock-icon" title="Your data stays in this browser">⌑</span>
+      </div>
+
+      <div class="sources-heading">
+        <span class="side-label">KNOWLEDGE LIBRARY</span>
+        <button id="libraryButton" class="icon-button" title="Browse the knowledge library" aria-label="Browse the knowledge library">⌕</button>
+      </div>
+      <div class="library-card">
+        <div class="library-top">
+          <div><strong id="libraryStatus">Indexing library…</strong><span id="librarySummary">27 documents bundled with this site</span></div>
+          <label class="switch" title="Include the bundled library in answers">
+            <input type="checkbox" id="libraryToggle" checked>
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="library-chips" id="libraryChips"></div>
+      </div>
+
+      <div class="sources-heading"><span class="side-label">YOUR FILES</span><button id="addFilesSmall" class="icon-button" title="Add files" aria-label="Add files">＋</button></div>
+      <div id="sourceList" class="source-list">
+        <div class="empty-sources"><span class="folder-art">▱</span><span>No files added yet</span><small>Add a folder to give UFY more context</small></div>
+      </div>
+
+      <button class="add-folder" id="addFolder"><span>＋</span> Add a folder</button>
+      <button class="add-files-link" id="addFiles">or choose individual files</button>
+
+      <div class="sidebar-bottom">
+        <div class="privacy-note"><span class="privacy-dot"></span><div><strong>Your files stay yours</strong><span>Processed on this device</span></div></div>
+        <button class="settings-link" id="settingsButton"><span>⚙</span> Model &amp; settings <span class="chevron">›</span></button>
+        <div class="version-line"><span class="status-dot" id="modelDot"></span><span id="sidebarModelStatus">Model not started</span></div>
+      </div>
+    </aside>
+
+    <main class="main-panel">
+      <header class="topbar">
+        <div class="breadcrumbs"><span>Workspace</span><span class="crumb-slash">/</span><strong>New conversation</strong></div>
+        <div class="topbar-right">
+          <span class="source-badge" id="sourceBadge" title="Where the model comes from">◈ loading engine…</span>
+          <span class="local-badge"><span class="privacy-dot"></span> Local &amp; private</span>
+          <button class="help-button" id="helpButton" aria-label="Help">?</button>
+        </div>
+      </header>
+
+      <section class="conversation" id="conversation">
+        <div class="welcome" id="welcome">
+          <div class="welcome-eyebrow"><span class="sparkle">✳</span> YOUR AI. YOUR DEVICE. YOUR DATA.</div>
+          <h1>Dark mode.<br><em>Light footprint.</em></h1>
+          <p class="welcome-copy">A private AI that runs in this browser, with a knowledge library<br>built into the site — math, reading, technology, and more.</p>
+
+          <div class="model-card" id="modelCard">
+            <div class="model-card-icon"><span class="model-orbit">✳</span></div>
+            <div class="model-card-content">
+              <div class="model-card-top">
+                <div><span class="model-label">ON-DEVICE MODEL</span><h2 id="modelCardTitle">Starting the engine</h2></div>
+                <span class="model-size" id="modelSize">~400 MB</span>
+              </div>
+              <p id="modelCardDescription">The model is served by this website and cached by your browser. Nothing is uploaded; prompts never leave this device.</p>
+              <div class="download-progress" id="downloadProgress" hidden>
+                <div class="progress-track"><div id="progressBar" class="progress-fill"></div></div>
+                <div class="progress-meta"><span id="progressLabel">Preparing model…</span><span id="progressPercent">0%</span></div>
+              </div>
+              <button class="load-model-button" id="loadModel"><span class="button-sparkle">✳</span> Start the model <span class="button-arrow">↗</span></button>
+              <div class="model-footnote" id="modelFootnote"><span>◉</span> WebGPU when available · CPU fallback · offline after first load</div>
+            </div>
+          </div>
+
+          <div class="quick-start">
+            <div class="quick-heading"><span>GET STARTED</span><span class="quick-line"></span></div>
+            <div class="quick-cards">
+              <button class="quick-card" id="quickLibrary"><span class="quick-icon folder-icon">▱</span><span><strong>Browse the library</strong><small>Math, reading, technology, science, and more</small></span><span class="quick-arrow">↗</span></button>
+              <button class="quick-card" id="quickAsk"><span class="quick-icon question-icon">✳</span><span><strong>Ask anything</strong><small>Grounded in the knowledge on this site</small></span><span class="quick-arrow">↗</span></button>
+              <button class="quick-card" id="quickFolder"><span class="quick-icon plus-icon">＋</span><span><strong>Add your files</strong><small>Notes, docs, PDFs — read locally</small></span><span class="quick-arrow">↗</span></button>
+              <button class="quick-card" id="quickPrivacy"><span class="quick-icon lock-icon-q">⌑</span><span><strong>How privacy works</strong><small>No account, no server, no upload</small></span><span class="quick-arrow">↗</span></button>
+            </div>
+          </div>
+          <div class="fine-print">Questions, files, and answers stay on this device. <button id="privacyLink">How it works</button></div>
+        </div>
+
+        <div id="messages" class="messages" aria-live="polite"></div>
+        <div id="typingIndicator" class="typing-indicator" hidden><span></span><span></span><span></span><b>Thinking locally…</b></div>
+      </section>
+
+      <footer class="composer-wrap">
+        <form class="composer" id="chatForm">
+          <textarea id="messageInput" rows="1" placeholder="Ask about algebra, the web, or anything in the library…" aria-label="Message UFY" disabled></textarea>
+          <div class="composer-tools">
+            <button type="button" id="attachButton" class="composer-attach" title="Add files">＋</button>
+            <span id="composerHint">Starting the local model…</span>
+            <button class="send-button" id="sendButton" type="submit" aria-label="Send message" disabled>↑</button>
+          </div>
+        </form>
+        <div class="composer-caption">UFY runs a ~0.5B parameter model locally. Check important details against a source.</div>
+      </footer>
+    </main>
+  </div>
+
+  <input id="filePicker" type="file" multiple hidden accept=".txt,.md,.markdown,.csv,.json,.html,.htm,.xml,.yaml,.yml,.log,.pdf">
+  <input id="folderPicker" type="file" multiple webkitdirectory directory hidden>
+
+  <div class="modal-backdrop" id="modalBackdrop" hidden>
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <button class="modal-close" id="modalClose" aria-label="Close">×</button>
+      <div class="modal-mark">✳</div>
+      <div class="modal-kicker" id="modalKicker">A NOTE ON PRIVACY</div>
+      <h2 id="modalTitle">Everything stays with you.</h2>
+      <div class="modal-copy" id="modalCopy"></div>
+      <button class="modal-done" id="modalDone">Got it</button>
+    </section>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

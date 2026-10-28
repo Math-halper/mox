@@ -1,0 +1,239 @@
+{
+  "version": 2,
+  "generated": "2026-10-28T05:07:34Z",
+  "categories": [
+    {
+      "id": "math",
+      "name": "Mathematics",
+      "description": "Arithmetic through calculus, plus a formula reference."
+    },
+    {
+      "id": "reading",
+      "name": "Reading & Writing",
+      "description": "Comprehension, grammar, style, vocabulary, and literature."
+    },
+    {
+      "id": "technology",
+      "name": "Technology",
+      "description": "Computers, the web, programming, AI, security, and data."
+    },
+    {
+      "id": "science",
+      "name": "Science",
+      "description": "Physics, chemistry, biology, Earth, and space."
+    },
+    {
+      "id": "humanities",
+      "name": "Humanities",
+      "description": "History, geography, cultures, and philosophy."
+    },
+    {
+      "id": "life",
+      "name": "Life & Skills",
+      "description": "Health, money, and learning how to learn."
+    },
+    {
+      "id": "",
+      "name": "General",
+      "description": "General notes and guides that do not belong to a category."
+    }
+  ],
+  "documents": [
+    {
+      "path": "humanities/geography-and-cultures.md",
+      "title": "Geography and cultures",
+      "category": "humanities",
+      "bytes": 4154,
+      "words": 558
+    },
+    {
+      "path": "humanities/philosophy-and-critical-thinking.md",
+      "title": "Philosophy and critical thinking",
+      "category": "humanities",
+      "bytes": 3572,
+      "words": 504
+    },
+    {
+      "path": "humanities/world-history-timeline.md",
+      "title": "World history: a working timeline",
+      "category": "humanities",
+      "bytes": 3701,
+      "words": 535
+    },
+    {
+      "path": "life/health-and-wellbeing.md",
+      "title": "Health and wellbeing",
+      "category": "life",
+      "bytes": 4478,
+      "words": 640
+    },
+    {
+      "path": "life/money-and-personal-finance.md",
+      "title": "Money and personal finance",
+      "category": "life",
+      "bytes": 4602,
+      "words": 705
+    },
+    {
+      "path": "life/study-skills-and-learning.md",
+      "title": "Study skills and learning",
+      "category": "life",
+      "bytes": 4092,
+      "words": 649
+    },
+    {
+      "path": "math/algebra.md",
+      "title": "Algebra",
+      "category": "math",
+      "bytes": 3986,
+      "words": 788
+    },
+    {
+      "path": "math/arithmetic-and-number-sense.md",
+      "title": "Arithmetic and number sense",
+      "category": "math",
+      "bytes": 4000,
+      "words": 750
+    },
+    {
+      "path": "math/calculus.md",
+      "title": "Calculus",
+      "category": "math",
+      "bytes": 4045,
+      "words": 700
+    },
+    {
+      "path": "math/geometry-and-trigonometry.md",
+      "title": "Geometry and trigonometry",
+      "category": "math",
+      "bytes": 3799,
+      "words": 711
+    },
+    {
+      "path": "math/math-reference-formulas.md",
+      "title": "Math formula and vocabulary reference",
+      "category": "math",
+      "bytes": 3202,
+      "words": 646
+    },
+    {
+      "path": "math/probability-and-statistics.md",
+      "title": "Probability and statistics",
+      "category": "math",
+      "bytes": 4065,
+      "words": 676
+    },
+    {
+      "path": "reading/grammar-and-punctuation.md",
+      "title": "Grammar and punctuation",
+      "category": "reading",
+      "bytes": 3933,
+      "words": 624
+    },
+    {
+      "path": "reading/literature-and-rhetoric.md",
+      "title": "Literature and rhetoric",
+      "category": "reading",
+      "bytes": 4274,
+      "words": 604
+    },
+    {
+      "path": "reading/reading-comprehension.md",
+      "title": "Reading comprehension",
+      "category": "reading",
+      "bytes": 4226,
+      "words": 636
+    },
+    {
+      "path": "reading/vocabulary-and-word-roots.md",
+      "title": "Vocabulary and word roots",
+      "category": "reading",
+      "bytes": 4397,
+      "words": 657
+    },
+    {
+      "path": "reading/writing-and-style.md",
+      "title": "Writing and style",
+      "category": "reading",
+      "bytes": 3888,
+      "words": 609
+    },
+    {
+      "path": "science/astronomy-and-space.md",
+      "title": "Astronomy and space",
+      "category": "science",
+      "bytes": 3999,
+      "words": 617
+    },
+    {
+      "path": "science/biology-and-earth.md",
+      "title": "Biology and Earth science",
+      "category": "science",
+      "bytes": 4675,
+      "words": 613
+    },
+    {
+      "path": "science/chemistry.md",
+      "title": "Chemistry",
+      "category": "science",
+      "bytes": 4467,
+      "words": 679
+    },
+    {
+      "path": "science/physics.md",
+      "title": "Physics",
+      "category": "science",
+      "bytes": 4552,
+      "words": 707
+    },
+    {
+      "path": "technology/ai-and-machine-learning.md",
+      "title": "Artificial intelligence and machine learning",
+      "category": "technology",
+      "bytes": 4688,
+      "words": 675
+    },
+    {
+      "path": "technology/cybersecurity-and-privacy.md",
+      "title": "Cybersecurity and privacy",
+      "category": "technology",
+      "bytes": 4634,
+      "words": 681
+    },
+    {
+      "path": "technology/data-databases-and-sql.md",
+      "title": "Data, databases, and SQL",
+      "category": "technology",
+      "bytes": 3950,
+      "words": 585
+    },
+    {
+      "path": "technology/how-computers-work.md",
+      "title": "How computers work",
+      "category": "technology",
+      "bytes": 4383,
+      "words": 700
+    },
+    {
+      "path": "technology/internet-and-web.md",
+      "title": "The internet and the web",
+      "category": "technology",
+      "bytes": 3908,
+      "words": 594
+    },
+    {
+      "path": "technology/programming-fundamentals.md",
+      "title": "Programming fundamentals",
+      "category": "technology",
+      "bytes": 4258,
+      "words": 650
+    },
+    {
+      "path": "ufy-starter-guide.md",
+      "title": "About this workspace",
+      "category": "",
+      "bytes": 2514,
+      "words": 390
+    }
+  ]
+}
