@@ -443,7 +443,9 @@ const NOOP_CACHE = {
 
 async function createEngine() {
   const { Wllama } = await import(WLLAMA_URL);
-  const config = { default: WLLAMA_BASE, 'wllama.wasm': WLLAMA_WASM };
+  // wllama resolves `default` and the `wllama.wasm` key to the runtime binary.
+  // Both point at the copy in this repository so no CDN is ever contacted.
+  const config = { default: WLLAMA_WASM, 'wllama.wasm': WLLAMA_WASM };
   const options = {
     suppressNativeLog: true,
     logger: { debug() {}, log() {}, warn() {}, error: (...args) => console.warn('[wllama]', ...args) }
