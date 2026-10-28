@@ -9,8 +9,11 @@ dark theme, a model that ships with the app, and a substantial knowledge library
 - **The model is included.** `models/smollm2-135m-instruct-q4_1.gguf` (94 MB,
   Apache-2.0) is served by this same website and executed by llama.cpp compiled to
   WebAssembly. No Hugging Face download, no API key, no server.
-- **Dark by default.** A dark, chat-style workspace — sidebar of past chats, knowledge
-  and files, a single centered composer — with no web fonts and no CDN assets.
+- **Black and white, high contrast.** A chat-style workspace — sidebar of past chats,
+  knowledge and files, a single centered composer — rendered in pure greyscale (every
+  colour is `#000`, `#fff`, or a white alpha). Body text sits at 21:1 against the
+  background and the dimmest label still clears 7:1, so it stays readable in bright
+  light. No web fonts, no CDN assets.
 - **Knowledge included.** 28 documents (~18,000 words) on math, reading and writing,
   technology, science, humanities, and life skills, indexed in the browser.
 
