@@ -109,9 +109,19 @@ IndexedDB and the Cache API, and clearing site data removes them.
 
 ## Notes and limits
 
-- Best in a recent Chrome, Edge, or Firefox. Older browsers without JSPI/threaded
-  WebAssembly fall back to wllama's compatibility build; install
-  `@wllama/wllama-compat` and pass it to `setCompat()` if you need that path offline.
+- Best in a recent Chrome or Edge (which ship WebAssembly memory64 and JSPI, the
+  features the bundled runtime targets). If a browser lacks them, the app either uses a
+  local compatibility build or, failing that, stays in search-only mode rather than
+  fetching anything from a CDN. To vendor that build:
+
+  ```sh
+  npm i @wllama/wllama-compat
+  mkdir -p vendor/wllama/compat
+  cp node_modules/@wllama/wllama-compat/wasm/wllama.{js,wasm} vendor/wllama/compat/
+  ```
+
+  The app detects `vendor/wllama/compat/wllama.wasm` on startup and registers it with
+  `setCompat()`, so no request leaves the site.
 - A 135M model is small: it summarizes and explains retrieved passages well, and is
   unreliable for facts outside them. The passages are the authority.
 - Imported files above 12 MB are skipped. Supported formats: PDF, TXT, Markdown, CSV,

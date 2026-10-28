@@ -581,10 +581,49 @@ function buildMessages(question, excerpts) {
   return messages;
 }
 
+// If the model's chat template cannot be applied by the Jinja engine (a GGUF
+// without one, or an unsupported template), fall back to plain ChatML — the
+// format used by SmolLM2, Qwen, and most other small instruct models.
+function chatMLPrompt(messages) {
+  return messages.map((message) => `<|im_start|>${message.role}\n${message.content}<|im_end|>`).join('\n') + '\n<|im_start|>assistant\n';
+}
+
+async function streamChatML(messages, onToken) {
+  let streamed = '';
+  await engine.createCompletion({
+    prompt: chatMLPrompt(messages),
+    stream: true,
+    max_tokens: MAX_NEW_TOKENS,
+    temp: 0.25,
+    top_k: 40,
+    top_p: 0.9,
+    penalty_repeat: 1.12,
+    penalty_last_n: 64,
+    stop: ['<|im_end|>', '<|endoftext|>', '<|im_start|>'],
+    onData: (chunk) => {
+      const piece = chunk?.choices?.[0]?.text ?? chunk?.choices?.[0]?.delta?.content;
+      if (!piece) return;
+      streamed += piece;
+      if (onToken) onToken(piece);
+    }
+  });
+  return streamed;
+}
+
 async function generateAnswer(question, excerpts, onToken) {
+  const messages = buildMessages(question, excerpts);
+  try {
+    return await chatCompletion(messages, onToken);
+  } catch (error) {
+    console.warn('Chat template failed, using ChatML instead:', error);
+    return cleanupAnswer(await streamChatML(messages, onToken));
+  }
+}
+
+async function chatCompletion(messages, onToken) {
   let streamed = '';
   const result = await engine.createChatCompletion({
-    messages: buildMessages(question, excerpts),
+    messages,
     stream: true,
     max_tokens: MAX_NEW_TOKENS,
     temp: 0.25,
