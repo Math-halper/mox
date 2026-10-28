@@ -135,7 +135,9 @@ function escapeHTML(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 }
 function tokenize(value) {
-  return (value.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) || [])
+  // Hyphens are separators (so "half-life" matches "half life"), apostrophes are not.
+  return (value.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}'’]*/gu) || [])
+    .map((word) => word.replace(/['’]s$/, ''))
     .filter((word) => word.length > 1 && !STOP_WORDS.has(word));
 }
 function makeChunks(text) {
@@ -389,6 +391,8 @@ function stem(word) {
     value = value
       .replace(/(ies)$/, 'y')
       .replace(/([^s])s$/, '$1')
+      .replace(/(ivity|iveness)$/, 'ive')
+      .replace(/(ication)$/, 'ify')
       .replace(/(ing|edly|ed|ly)$/, '')
       .replace(/(t|e)$/, '');
   }
@@ -398,8 +402,15 @@ function stem(word) {
 }
 
 function retrieve(query, limit = MAX_EXCERPTS) {
-  const terms = [...new Set(tokenize(query))];
+  const words = tokenize(query);
+  const terms = [...new Set(words)];
   if (!terms.length) return [];
+  // Consecutive content words, e.g. "unit test" or "rain shadow", are worth
+  // more than their parts appearing separately.
+  const bigrams = [];
+  for (let index = 0; index < words.length - 1; index++) {
+    if (words[index] !== words[index + 1]) bigrams.push(`${words[index]} ${words[index + 1]}`);
+  }
   const chunks = allKnowledge().flatMap((doc) => chunksFor(doc));
   if (!chunks.length) return [];
 
@@ -413,7 +424,17 @@ function retrieve(query, limit = MAX_EXCERPTS) {
     informativeness.set(term, Math.log(1 + chunks.length / (1 + count)));
   }
 
-  const phrase = query.toLowerCase().replace(/\s+/g, ' ').trim();
+  // How often each term appears across a whole document: a tie in one passage is
+  // broken by whichever document is actually about the topic.
+  const docTotals = new Map();
+  for (const chunk of chunks) {
+    const key = chunk.doc.id;
+    if (!docTotals.has(key)) docTotals.set(key, 0);
+    let count = docTotals.get(key);
+    for (const term of terms) count += chunk.frequencies.get(term) || chunk.stems.get(stem(term)) || 0;
+    docTotals.set(key, count);
+  }
+
   const total = terms.reduce((sum, term) => sum + informativeness.get(term), 0) || 1;
   const scored = [];
   for (const chunk of chunks) {
@@ -444,11 +465,15 @@ function retrieve(query, limit = MAX_EXCERPTS) {
     }
     // Only multi-word phrases get the phrase bonus: for a single word it would
     // just double-count the term and make "fraction"/"fractions" rank differently.
-    const phraseMatch = phrase.includes(' ') && chunk.text.toLowerCase().includes(phrase);
-    if (phraseMatch) score += 3.5;
-    scored.push({ ...chunk, score, matched, coverage: coverage / total, titleMatch, phraseMatch });
+    const lower = chunk.text.toLowerCase();
+    let phraseMatch = false;
+    for (const bigram of bigrams) {
+      if (lower.includes(bigram)) { score += 2.5; phraseMatch = true; }
+    }
+    scored.push({ ...chunk, score, matched, coverage: coverage / total, titleMatch, phraseMatch,
+      docTotal: docTotals.get(chunk.doc.id) || 0 });
   }
-  scored.sort((a, b) => b.score - a.score);
+  scored.sort((a, b) => b.score - a.score || b.docTotal - a.docTotal || a.index - b.index);
   if (!scored.length) return [];
 
   // A weak match is worse than no match: it makes the model cite an irrelevant
@@ -461,6 +486,20 @@ function retrieve(query, limit = MAX_EXCERPTS) {
   // One common word ("name", "there") matches something in any 18,000-word
   // library. A single-word question only counts if that word is distinctive.
   if (terms.length === 1 && (documentFrequency.get(terms[0]) || 0) / chunks.length >= 0.22) return [];
+
+  // The rarest word in a question is usually its subject ("nutrition" in "how do
+  // I read a nutrition label"). A passage that misses it is answering something
+  // else, even if it collects more common words.
+  const maxIdf = Math.max(...terms.map((term) => informativeness.get(term) || 0));
+  const subjects = terms.filter((term) => (informativeness.get(term) || 0) >= maxIdf * 0.8);
+  const onSubject = scored.filter((item) => subjects.some((term) =>
+    item.frequencies.has(term) || item.stems.has(stem(term))));
+  // If the subject word never appears anywhere in the library, nothing here is
+  // actually about it: better to answer from general knowledge than to cite an
+  // unrelated passage.
+  if (!onSubject.length && subjects.some((term) => (documentFrequency.get(term) || 0) === 0)) return [];
+  if (onSubject.length) scored.splice(0, scored.length, ...onSubject);
+
   const best = scored[0];
   if (!evidence(best)) return [];
   const floor = Math.max(2.4, best.score * 0.34);
@@ -470,8 +509,10 @@ function retrieve(query, limit = MAX_EXCERPTS) {
   const bestScore = scored[0].score;
   const usable = scored.filter((item) => {
     if (item.score < floor) return false;
-    if (distinctive.length && !distinctive.some((term) => item.frequencies.has(term) || item.stems.has(stem(term)))) return false;
-    return item.strong || (item.titleMatch || item.phraseMatch) || item.score >= bestScore * 0.62;
+    const hasDistinctive = distinctive.length === 0
+      || distinctive.some((term) => item.frequencies.has(term) || item.stems.has(stem(term)));
+    const coversEnough = item.matched >= Math.min(2, terms.length) && item.score >= bestScore * 0.62;
+    return hasDistinctive || coversEnough;
   });
 
   const selected = [];

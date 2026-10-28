@@ -34,7 +34,7 @@ The first visit transfers the 94 MB model file; after that the browser serves it
 
 ## The knowledge library
 
-`knowledge/` holds 28 documents — about 18,000 words — covering:
+`knowledge/` holds 39 documents — about 29k words — covering:
 
 - Mathematics: arithmetic, algebra, geometry, trigonometry, calculus, probability, statistics, and a formula sheet.
 - Reading and writing: comprehension, grammar, vocabulary, style, literature, and rhetoric.
@@ -53,7 +53,7 @@ To add a document to the built-in library so it loads automatically, drop it int
 
 ## When Mox has sources, and when it doesn't
 
-If your question matches something in the library, Mox puts those passages in front of the model, cites them as [1], [2], and links them under the answer so you can read the exact text. If nothing matches — a greeting, simple arithmetic, something outside the 28 documents — Mox answers from the model's own knowledge and says so in one line under the reply. It should never claim it has "no sources" or refuse a question just because the library is silent.
+If your question matches something in the library, Mox puts those passages in front of the model, cites them as [1], [2], and links them under the answer so you can read the exact text. If nothing matches — a greeting, simple arithmetic, something outside the 39 documents — Mox answers from the model's own knowledge and says so in one line under the reply. It should never claim it has "no sources" or refuse a question just because the library is silent.
 
 When the library does match but only partly, the answer uses the passages and then fills in. Treat it as a fast study aid, not an authority: check anything that matters against the cited document or another source.
 

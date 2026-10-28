@@ -14,8 +14,10 @@ dark theme, a model that ships with the app, and a substantial knowledge library
   colour is `#000`, `#fff`, or a white alpha). Body text sits at 21:1 against the
   background and the dimmest label still clears 7:1, so it stays readable in bright
   light. No web fonts, no CDN assets.
-- **Knowledge included.** 28 documents (~18,000 words) on math, reading and writing,
-  technology, science, humanities, and life skills, indexed in the browser.
+- **Knowledge included.** 39 documents (~29k words) on math, reading and writing,
+  technology (including software engineering and web development), science, humanities
+  (including modern history and urban geography), and life skills (careers, everyday law,
+  cooking), indexed in the browser.
 
 ## Use it — no setup for anyone
 

@@ -107,6 +107,26 @@ for (const question of ['hello', 'hi there', 'thanks', 'what can you do?', 'what
 }
 check('retrieval: keeps real matches', window.__mox.retrieve('what is photosynthesis?').length > 0);
 
+// Each of these should find the document that is actually about the question.
+for (const [question, expected] of [
+  ['how do I balance a chemical equation?', /chemistry/i],
+  ['what is a rain shadow?', /geography/i],
+  ['what is an isomer?', /chemistry/i],
+  ['how do time zones work?', /geography/i],
+  ['how do I read a nutrition label?', /cooking/i],
+  ['what is big O notation?', /mathematics/i],
+  ['what is a half life?', /physics/i],
+  ['how do I negotiate a salary?', /careers/i],
+  ['what is a tenancy deposit?', /law/i],
+  ['what is free indirect discourse?', /literature/i],
+  ['what is a merge conflict in git?', /software/i],
+  ['what is semantic HTML?', /web development/i],
+  ['what is self esteem?', /health/i]
+]) {
+  const hit = window.__mox.retrieve(question)[0];
+  check(`retrieval: ${question.slice(0, 34)}…`, Boolean(hit) && expected.test(hit.doc.name), hit?.doc.name);
+}
+
 /* ---------------------------------------------------------------- prompts */
 const grounded = window.__mox.buildMessages('What is a fraction?',
   [{ text: 'A fraction names part of a whole.', doc: { name: 'Arithmetic', categoryLabel: 'Mathematics', bundled: true } }]);
