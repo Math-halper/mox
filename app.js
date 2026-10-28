@@ -619,6 +619,16 @@ function updateComposer() {
   else elements.hint.textContent = 'Starting the local model…';
 }
 
+// Passages are cut at character boundaries, so they can begin mid-sentence.
+// Start the visible snippet at a sentence break when one appears early on.
+function tidySnippet(text, maxLength = 430) {
+  let value = text.replace(/\s+/g, ' ').trim();
+  const boundary = value.search(/(?<=[.!?])\s/);
+  if (boundary > 15 && boundary < 200) value = value.slice(boundary + 1).trim();
+  if (value.length > maxLength) value = `${value.slice(0, maxLength).replace(/\s+\S*$/, '')}…`;
+  return value;
+}
+
 function fallbackAnswer(question, excerpts) {
   if (!excerpts.length) {
     return 'The model is not available right now, and nothing in the knowledge library matched that question. Try adding your own files, or reload to retry the model.';
@@ -627,7 +637,7 @@ function fallbackAnswer(question, excerpts) {
     ? 'The model could not produce an answer, so here are the closest passages from the library:'
     : 'The language model is not running, so here are the closest passages from the library:';
   return `${header}\n\n${excerpts.slice(0, 3).map((item, index) =>
-    `${index + 1}. ${item.doc.bundled ? `${item.doc.categoryLabel} › ${item.doc.name}` : item.doc.name}\n“${item.text.slice(0, 420)}${item.text.length > 420 ? '…' : ''}”`
+    `${index + 1}. ${item.doc.bundled ? `${item.doc.categoryLabel} › ${item.doc.name}` : item.doc.name}\n“${tidySnippet(item.text)}”`
   ).join('\n\n')}`;
 }
 
@@ -801,6 +811,8 @@ $('#addFilesSmall').addEventListener('click', () => elements.filePicker.click())
 $('#attachButton').addEventListener('click', () => elements.filePicker.click());
 $('#quickLibrary').addEventListener('click', () => openModal('library'));
 $('#libraryButton').addEventListener('click', () => openModal('library'));
+$('#mobileLibrary').addEventListener('click', () => openModal('library'));
+$('#mobileSettings').addEventListener('click', () => openModal('settings'));
 $('#quickPrivacy').addEventListener('click', () => openModal('privacy'));
 $('#settingsButton').addEventListener('click', () => openModal('settings'));
 $('#helpButton').addEventListener('click', () => openModal('privacy'));
@@ -850,7 +862,7 @@ window.__ufy = {
 };
 
 (async function initialize() {
-  if (location.protocol === 'file:') {
+  if (window.location.protocol === 'file:') {
     elements.modelTitle.textContent = 'Start the local server first';
     elements.modelDescription.textContent = 'Browsers block WebAssembly and module loading from file:// URLs. Run `python3 run.py` in the project folder, then open the address it prints.';
     elements.progress.hidden = true;

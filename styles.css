@@ -51,7 +51,7 @@ body {
   border-right: 1px solid var(--line-soft);
   padding: 20px 15px 13px;
   display: flex; flex-direction: column;
-  overflow: hidden;
+  overflow-x: hidden; overflow-y: auto; scrollbar-width: thin;
 }
 .brand { height: 36px; display: flex; align-items: center; gap: 9px; text-decoration: none; color: var(--ink); margin: 0 4px 22px; }
 .brand-mark {
@@ -208,6 +208,11 @@ body {
   font-size: 9px; color: #7fae9c; background: #0c1512;
 }
 .local-badge .privacy-dot { width: 5px; height: 5px; box-shadow: none; margin-right: 5px; vertical-align: 1px; }
+.mobile-icon {
+  display: none; width: 26px; height: 26px; border: 1px solid #2b2b38; border-radius: 7px;
+  background: #12121a; color: var(--muted); font-size: 13px; cursor: pointer; line-height: 1;
+}
+.mobile-icon:hover { color: var(--ink); border-color: #3d3d50; }
 .help-button {
   width: 22px; height: 22px; border: 1px solid #2b2b38; border-radius: 50%;
   background: #12121a; color: var(--muted); font-size: 11px; cursor: pointer;
@@ -452,6 +457,7 @@ body {
   .composer-wrap { width: calc(100% - 26px); }
   .message-body { font-size: 12px; }
   .local-badge { display: none; }
+  .mobile-icon { display: grid; place-items: center; }
 }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
