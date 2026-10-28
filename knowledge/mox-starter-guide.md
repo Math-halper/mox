@@ -15,6 +15,14 @@ Because the model is small it is fast to start and light on memory, but its reas
 
 Download a larger GGUF once (for example `python3 tools/fetch_model.py --preset qwen-0.5b`), or drop any `.gguf` chat model into `models/` and list it in `models/manifest.json`. Open **Model & settings** in the sidebar to switch between the models on disk. Bigger models answer better and run slower on a CPU.
 
+## Chats, shortcuts, and offline use
+
+Every conversation is saved in this browser and listed in the sidebar, so closing the tab does not lose it. Open an old chat to pick it up again, or press the small × beside its title to delete it. Inside a conversation, Stop halts a long answer, Copy puts the text on the clipboard, and Regenerate asks the same question again. Every answer lists the passages it used: click one to read the exact text.
+
+Keyboard: ⌘K or Ctrl K starts a new chat, ⌘/ or Ctrl / jumps to the message box, Enter sends, Shift Enter starts a new line, and Escape closes a dialog or the phone drawer.
+
+Once the page has been opened, a service worker keeps a copy of it. A reload with no internet connection still opens Mox and answers from the model and library already stored on the device. Files can be dragged onto the message box or pasted into it instead of using the Add a folder button.
+
 ## Starting up
 
 Mox is a static website, so there is nothing to install.
@@ -26,7 +34,7 @@ The first visit transfers the 94 MB model file; after that the browser serves it
 
 ## The knowledge library
 
-`knowledge/` holds 28 documents — about 18,000 words — covering:
+`knowledge/` holds 39 documents — about 29k words — covering:
 
 - Mathematics: arithmetic, algebra, geometry, trigonometry, calculus, probability, statistics, and a formula sheet.
 - Reading and writing: comprehension, grammar, vocabulary, style, literature, and rhetoric.
@@ -42,6 +50,12 @@ Each file is fetched by the page, split into overlapping passages, and scored ag
 Use **Add a folder** or **Add files** to import notes, PDFs, or exported documents. Imported text is stored in this browser's IndexedDB and can be removed from the sidebar.
 
 To add a document to the built-in library so it loads automatically, drop it into `knowledge/` and run `python3 tools/build_knowledge_index.py`.
+
+## When Mox has sources, and when it doesn't
+
+If your question matches something in the library, Mox puts those passages in front of the model, cites them as [1], [2], and links them under the answer so you can read the exact text. If nothing matches — a greeting, simple arithmetic, something outside the 39 documents — Mox answers from the model's own knowledge and says so in one line under the reply. It should never claim it has "no sources" or refuse a question just because the library is silent.
+
+When the library does match but only partly, the answer uses the passages and then fills in. Treat it as a fast study aid, not an authority: check anything that matters against the cited document or another source.
 
 ## Honest limits
 

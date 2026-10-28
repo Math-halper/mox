@@ -3,38 +3,45 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0a0a0f">
+  <meta name="theme-color" content="#000000">
   <meta name="color-scheme" content="dark">
   <meta name="description" content="Mox is a private AI workspace that runs a bundled language model in your browser and answers from the knowledge built into this site.">
   <title>Mox — your private AI workspace</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="aurora" aria-hidden="true"></div>
   <div class="app-shell">
     <aside class="sidebar" aria-label="Workspace">
-      <a class="brand" href="#" aria-label="Mox home">
-        <span class="brand-mark">m<span>o</span></span>
-        <span class="brand-name">mox<span class="brand-period">.</span></span>
-        <span class="brand-tag">local</span>
-      </a>
-
-      <button class="new-chat" id="newChat"><span class="plus">＋</span> New conversation <kbd>⌘K</kbd></button>
-
-      <div class="side-label">YOUR WORKSPACE</div>
-      <div class="workspace-card">
-        <div class="workspace-icon">✳</div>
-        <div><strong>Personal workspace</strong><span>Model + files on this device</span></div>
-        <span class="lock-icon" title="Your data stays in this browser">⌑</span>
+      <div class="sidebar-head">
+        <a class="brand" href="#" aria-label="Mox home">
+          <span class="brand-mark" aria-hidden="true">✳</span>
+          <span class="brand-name">mox</span>
+        </a>
       </div>
 
-      <div class="sources-heading">
-        <span class="side-label">KNOWLEDGE LIBRARY</span>
-        <button id="libraryButton" class="icon-button" title="Browse the knowledge library" aria-label="Browse the knowledge library">⌕</button>
+      <button class="side-row new-chat" id="newChat">
+        <span class="side-icon" aria-hidden="true">✎</span>
+        <span class="side-text">New chat</span>
+        <kbd>⌘K</kbd>
+      </button>
+      <button class="side-row" id="libraryButton" title="Browse the knowledge library">
+        <span class="side-icon" aria-hidden="true">⌕</span>
+        <span class="side-text">Search the library</span>
+      </button>
+
+      <div class="side-group">
+        <div class="side-label">Chats</div>
+        <div class="chat-list" id="chatList"></div>
+        <div class="side-empty" id="chatEmpty">Conversations stay in this browser</div>
       </div>
-      <div class="library-card">
-        <div class="library-top">
-          <div><strong id="libraryStatus">Indexing library…</strong><span id="librarySummary">27 documents bundled with this site</span></div>
+
+      <div class="side-group">
+        <div class="side-label">Knowledge</div>
+        <div class="lib-row">
+          <div class="lib-text">
+            <strong id="libraryStatus">Indexing library…</strong>
+            <span id="librarySummary">39 documents bundled with this site</span>
+          </div>
           <label class="switch" title="Include the bundled library in answers">
             <input type="checkbox" id="libraryToggle" checked>
             <span class="switch-track"><span class="switch-thumb"></span></span>
@@ -43,82 +50,96 @@
         <div class="library-chips" id="libraryChips"></div>
       </div>
 
-      <div class="sources-heading"><span class="side-label">YOUR FILES</span><button id="addFilesSmall" class="icon-button" title="Add files" aria-label="Add files">＋</button></div>
-      <div id="sourceList" class="source-list">
-        <div class="empty-sources"><span class="folder-art">▱</span><span>No files added yet</span><small>Add a folder to give Mox more context</small></div>
+      <div class="side-group">
+        <div class="side-label-row">
+          <span class="side-label">Files</span>
+          <button class="icon-button" id="addFilesSmall" title="Add files" aria-label="Add files">＋</button>
+        </div>
+        <div id="sourceList" class="source-list">
+          <div class="empty-sources"><span>No files added yet</span><small>Add a folder to give Mox more context</small></div>
+        </div>
+        <button class="side-row" id="addFolder"><span class="side-icon" aria-hidden="true">＋</span><span class="side-text">Add a folder</span></button>
+        <button class="side-row subtle" id="addFiles"><span class="side-text">Choose individual files</span></button>
       </div>
-
-      <button class="add-folder" id="addFolder"><span>＋</span> Add a folder</button>
-      <button class="add-files-link" id="addFiles">or choose individual files</button>
 
       <div class="sidebar-bottom">
-        <div class="privacy-note"><span class="privacy-dot"></span><div><strong>Your files stay yours</strong><span>Processed on this device</span></div></div>
-        <button class="settings-link" id="settingsButton"><span>⚙</span> Model &amp; settings <span class="chevron">›</span></button>
-        <div class="version-line"><span class="status-dot" id="modelDot"></span><span id="sidebarModelStatus">Loading model…</span></div>
+        <button class="side-row" id="settingsButton"><span class="side-icon" aria-hidden="true">⚙</span><span class="side-text">Model &amp; settings</span></button>
+        <button class="side-row" id="privacyLink"><span class="side-icon" aria-hidden="true">⌑</span><span class="side-text">How privacy works</span></button>
+        <div class="account-row">
+          <span class="account-avatar" aria-hidden="true">M</span>
+          <div class="account-text"><strong>Local workspace</strong><span id="sidebarModelStatus">Loading model…</span></div>
+          <span class="status-dot" id="modelDot"></span>
+        </div>
       </div>
     </aside>
+    <div class="scrim" id="sidebarScrim" hidden></div>
 
     <main class="main-panel">
       <header class="topbar">
-        <div class="breadcrumbs"><span>Workspace</span><span class="crumb-slash">/</span><strong>New conversation</strong></div>
+        <button class="mobile-icon drawer-toggle" id="sidebarToggle" title="Chats" aria-label="Chats" aria-expanded="false">☰</button>
+        <button class="model-menu" id="modelMenu" title="Model &amp; settings">
+          <span class="model-menu-name">Mox</span>
+          <span class="model-menu-sub">135M</span>
+          <span class="model-menu-chevron" aria-hidden="true">⌄</span>
+        </button>
         <div class="topbar-right">
           <button class="mobile-icon" id="mobileLibrary" title="Knowledge library" aria-label="Knowledge library">⌕</button>
           <button class="mobile-icon" id="mobileSettings" title="Model &amp; settings" aria-label="Model and settings">⚙</button>
           <span class="source-badge" id="sourceBadge" title="Where the model comes from">◈ loading engine…</span>
-          <span class="local-badge"><span class="privacy-dot"></span> Local &amp; private</span>
+          <span class="local-badge"><span class="privacy-dot"></span> Local</span>
           <button class="help-button" id="helpButton" aria-label="Help">?</button>
         </div>
       </header>
 
       <section class="conversation" id="conversation">
         <div class="welcome" id="welcome">
-          <div class="welcome-eyebrow"><span class="sparkle">✳</span> YOUR AI. YOUR DEVICE. YOUR DATA.</div>
-          <h1>Dark mode.<br><em>Light footprint.</em></h1>
-          <p class="welcome-copy">A private AI that runs in this browser — nothing to install.<br>A real model and a knowledge library ship with the site.</p>
+          <h1>What can I help with?</h1>
 
           <div class="model-card" id="modelCard">
-            <div class="model-card-icon"><span class="model-orbit">✳</span></div>
+            <div class="model-card-icon"><span class="model-orbit" aria-hidden="true">✳</span></div>
             <div class="model-card-content">
               <div class="model-card-top">
-                <div><span class="model-label">ON-DEVICE MODEL</span><h2 id="modelCardTitle">Loading the bundled model</h2><span class="model-file" id="modelName">reading manifest…</span></div>
-                <span class="model-size" id="modelSize">~94 MB</span>
+                <div>
+                  <h2 id="modelCardTitle">Loading the bundled model</h2>
+                  <span class="model-file" id="modelName">reading manifest…</span>
+                </div>
+                <span class="model-size" id="modelSize">94 MB</span>
               </div>
               <p id="modelCardDescription">The weights live in <code>models/</code> on this site, so nothing is downloaded from a model host. Everything runs on your device.</p>
               <div class="download-progress" id="downloadProgress" hidden>
                 <div class="progress-track"><div id="progressBar" class="progress-fill"></div></div>
                 <div class="progress-meta"><span id="progressLabel">Preparing model…</span><span id="progressPercent">0%</span></div>
               </div>
-              <button class="load-model-button" id="loadModel"><span class="button-sparkle">✳</span> Start the model <span class="button-arrow">↗</span></button>
-              <div class="model-footnote" id="modelFootnote"><span>◉</span> Runs on llama.cpp / WebAssembly · offline after the first load</div>
+              <button class="load-model-button" id="loadModel">Start the model</button>
+              <div class="model-footnote" id="modelFootnote">Runs on llama.cpp / WebAssembly · offline after the first load</div>
             </div>
           </div>
-
-          <div class="quick-start">
-            <div class="quick-heading"><span>GET STARTED</span><span class="quick-line"></span></div>
-            <div class="quick-cards">
-              <button class="quick-card" id="quickLibrary"><span class="quick-icon folder-icon">▱</span><span><strong>Browse the library</strong><small>Math, reading, technology, science, and more</small></span><span class="quick-arrow">↗</span></button>
-              <button class="quick-card" id="quickAsk"><span class="quick-icon question-icon">✳</span><span><strong>Ask anything</strong><small>Grounded in the knowledge on this site</small></span><span class="quick-arrow">↗</span></button>
-              <button class="quick-card" id="quickFolder"><span class="quick-icon plus-icon">＋</span><span><strong>Add your files</strong><small>Notes, docs, PDFs — read locally</small></span><span class="quick-arrow">↗</span></button>
-              <button class="quick-card" id="quickPrivacy"><span class="quick-icon lock-icon-q">⌑</span><span><strong>How privacy works</strong><small>No account, no server, no upload</small></span><span class="quick-arrow">↗</span></button>
-            </div>
-          </div>
-          <div class="fine-print">Model, questions, and files stay on this device. <button id="privacyLink">How it works</button></div>
         </div>
 
         <div id="messages" class="messages" aria-live="polite"></div>
-        <div id="typingIndicator" class="typing-indicator" hidden><span></span><span></span><span></span><b>Thinking locally…</b></div>
+        <div id="typingIndicator" class="typing-indicator" hidden><span></span><span></span><span></span><b>Thinking…</b></div>
       </section>
 
       <footer class="composer-wrap">
-        <form class="composer" id="chatForm">
-          <textarea id="messageInput" rows="1" placeholder="Ask about algebra, the web, or anything in the library…" aria-label="Message Mox" disabled></textarea>
+        <form class="composer" id="chatForm" aria-busy="false">
+          <textarea id="messageInput" rows="1" placeholder="Ask anything" aria-label="Message Mox" disabled></textarea>
           <div class="composer-tools">
-            <button type="button" id="attachButton" class="composer-attach" title="Add files">＋</button>
+            <button type="button" id="attachButton" class="composer-attach" title="Add files" aria-label="Add files">＋</button>
             <span id="composerHint">Starting the local model…</span>
             <button class="send-button" id="sendButton" type="submit" aria-label="Send message" disabled>↑</button>
           </div>
         </form>
-        <div class="composer-caption">Mox runs a small bundled model locally. Check important details against a source.</div>
+
+        <div class="quick-start" id="quickStart">
+          <div class="quick-cards">
+            <button class="quick-card" id="quickLibrary"><span class="quick-icon" aria-hidden="true">▱</span><strong>Browse the library</strong></button>
+            <button class="quick-card" id="quickAsk"><span class="quick-icon" aria-hidden="true">✳</span><strong>Ask anything</strong></button>
+            <button class="quick-card" id="quickFolder"><span class="quick-icon" aria-hidden="true">＋</span><strong>Add your files</strong></button>
+            <button class="quick-card" id="quickPrivacy"><span class="quick-icon" aria-hidden="true">⌑</span><strong>How privacy works</strong></button>
+          </div>
+        </div>
+
+        <div class="composer-caption">Mox runs a small bundled model on your device. Check important details against a source.</div>
       </footer>
     </main>
   </div>
@@ -130,13 +151,13 @@
   <div class="modal-backdrop" id="modalBackdrop" hidden>
     <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
       <button class="modal-close" id="modalClose" aria-label="Close">×</button>
-      <div class="modal-mark">✳</div>
       <div class="modal-kicker" id="modalKicker">A NOTE ON PRIVACY</div>
       <h2 id="modalTitle">Everything stays with you.</h2>
       <div class="modal-copy" id="modalCopy"></div>
-      <button class="modal-done" id="modalDone">Got it</button>
+      <button class="modal-done" id="modalDone">Done</button>
     </section>
   </div>
+  <div id="srStatus" class="sr-only" role="status" aria-live="polite"></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script type="module" src="app.js"></script>
 </body>

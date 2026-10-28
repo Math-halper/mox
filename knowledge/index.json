@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "generated": "2026-10-28T05:36:29Z",
+  "generated": "2026-10-28T12:05:43Z",
   "categories": [
     {
       "id": "math",
@@ -40,11 +40,25 @@
   ],
   "documents": [
     {
+      "path": "humanities/geography-2-cities-climate-maps.md",
+      "title": "Geography II: cities, climate, and maps",
+      "category": "humanities",
+      "bytes": 6928,
+      "words": 1033
+    },
+    {
       "path": "humanities/geography-and-cultures.md",
       "title": "Geography and cultures",
       "category": "humanities",
       "bytes": 4154,
       "words": 558
+    },
+    {
+      "path": "humanities/modern-history-1900-to-today.md",
+      "title": "Modern history: 1900 to today",
+      "category": "humanities",
+      "bytes": 5006,
+      "words": 787
     },
     {
       "path": "humanities/philosophy-and-critical-thinking.md",
@@ -61,11 +75,25 @@
       "words": 535
     },
     {
+      "path": "life/careers-jobs-and-interviews.md",
+      "title": "Careers, jobs, and interviews",
+      "category": "life",
+      "bytes": 6373,
+      "words": 1070
+    },
+    {
+      "path": "life/cooking-nutrition-and-food-safety.md",
+      "title": "Cooking, nutrition, and food safety",
+      "category": "life",
+      "bytes": 5623,
+      "words": 985
+    },
+    {
       "path": "life/health-and-wellbeing.md",
       "title": "Health and wellbeing",
       "category": "life",
-      "bytes": 4478,
-      "words": 640
+      "bytes": 5813,
+      "words": 839
     },
     {
       "path": "life/money-and-personal-finance.md",
@@ -73,6 +101,13 @@
       "category": "life",
       "bytes": 4602,
       "words": 705
+    },
+    {
+      "path": "life/personal-law-and-civics.md",
+      "title": "Everyday law, contracts, and civics",
+      "category": "life",
+      "bytes": 7086,
+      "words": 1076
     },
     {
       "path": "life/study-skills-and-learning.md",
@@ -117,6 +152,13 @@
       "words": 646
     },
     {
+      "path": "math/mathematics-2-functions-logs-discrete.md",
+      "title": "Mathematics II: functions, logs, sequences, and discrete math",
+      "category": "math",
+      "bytes": 6590,
+      "words": 1143
+    },
+    {
       "path": "math/probability-and-statistics.md",
       "title": "Probability and statistics",
       "category": "math",
@@ -127,8 +169,8 @@
       "path": "mox-starter-guide.md",
       "title": "About this workspace",
       "category": "",
-      "bytes": 3505,
-      "words": 528
+      "bytes": 5142,
+      "words": 830
     },
     {
       "path": "reading/grammar-and-punctuation.md",
@@ -136,6 +178,13 @@
       "category": "reading",
       "bytes": 3933,
       "words": 624
+    },
+    {
+      "path": "reading/literature-2-forms-and-analysis.md",
+      "title": "Literature II: forms, genres, and close reading",
+      "category": "reading",
+      "bytes": 7505,
+      "words": 1204
     },
     {
       "path": "reading/literature-and-rhetoric.md",
@@ -180,11 +229,25 @@
       "words": 613
     },
     {
+      "path": "science/chemistry-2-reactions-and-materials.md",
+      "title": "Chemistry II: reactions, solutions, and organic basics",
+      "category": "science",
+      "bytes": 4468,
+      "words": 709
+    },
+    {
       "path": "science/chemistry.md",
       "title": "Chemistry",
       "category": "science",
       "bytes": 4467,
       "words": 679
+    },
+    {
+      "path": "science/physics-2-electricity-waves-and-modern.md",
+      "title": "Physics II: electricity, waves, and modern physics",
+      "category": "science",
+      "bytes": 6486,
+      "words": 1009
     },
     {
       "path": "science/physics.md",
@@ -234,6 +297,20 @@
       "category": "technology",
       "bytes": 4258,
       "words": 650
+    },
+    {
+      "path": "technology/software-engineering-practices.md",
+      "title": "Software engineering practices",
+      "category": "technology",
+      "bytes": 5655,
+      "words": 915
+    },
+    {
+      "path": "technology/web-development-html-css-js.md",
+      "title": "Web development: HTML, CSS, and JavaScript in practice",
+      "category": "technology",
+      "bytes": 5069,
+      "words": 792
     }
   ]
 }

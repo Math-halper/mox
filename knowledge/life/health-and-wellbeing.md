@@ -17,6 +17,16 @@ Adults generally need 7–9 hours. Sleep supports memory consolidation, immune f
 - Dietary patterns with strong evidence: plenty of vegetables and fruit, whole grains, legumes, nuts, fish, and limited processed meat and added sugar — Mediterranean-style eating is a well-studied example.
 - Supplements are not a shortcut; discuss them with a clinician, and avoid megadoses.
 
+## Confidence and self-esteem
+
+Self-esteem is the story you tell about your own worth; self-compassion is how you treat yourself when that story sours. Evidence favours self-compassion over forced positivity: people who talk to themselves as they would to a friend recover from setbacks faster, procrastinate less, and try again sooner.
+
+Practical levers: notice and name the inner critic instead of obeying it; separate a behaviour from an identity ("I missed the deadline" is not "I am unreliable"); keep a short record of things you finished, because memory keeps failures longer than wins; compare yourself with your past self rather than with someone's edited highlights; and act before you feel ready, since confidence usually follows evidence of doing the thing, not the reverse.
+
+Social media amplifies upward comparison, which reliably lowers mood. Time-boxing feeds, muting accounts that make you feel small, and deliberately following people who are honest about failure are cheap fixes with real effects.
+
+Self-esteem that depends on constant achievement is fragile. Sleep, exercise, daylight, and a couple of relationships where you can be unimpressive are less glamorous and more reliable foundations. Low mood, persistent self-criticism, or hopelessness that lasts weeks deserves professional help, not more willpower.
+
 ## Movement
 
 Guidelines for adults: about 150 minutes of moderate aerobic activity per week (or 75 vigorous), plus muscle-strengthening twice weekly, plus balance work for older adults.
