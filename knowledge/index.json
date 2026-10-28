@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "generated": "2026-10-28T06:18:17Z",
+  "generated": "2026-10-28T12:05:43Z",
   "categories": [
     {
       "id": "math",
@@ -39,13 +39,6 @@
     }
   ],
   "documents": [
-    {
-      "path": "cooking-nutrition-and-food-safety.md",
-      "title": "Cooking, nutrition, and food safety",
-      "category": "",
-      "bytes": 5623,
-      "words": 985
-    },
     {
       "path": "humanities/geography-2-cities-climate-maps.md",
       "title": "Geography II: cities, climate, and maps",
@@ -87,6 +80,13 @@
       "category": "life",
       "bytes": 6373,
       "words": 1070
+    },
+    {
+      "path": "life/cooking-nutrition-and-food-safety.md",
+      "title": "Cooking, nutrition, and food safety",
+      "category": "life",
+      "bytes": 5623,
+      "words": 985
     },
     {
       "path": "life/health-and-wellbeing.md",
@@ -306,9 +306,9 @@
       "words": 915
     },
     {
-      "path": "web-development-html-css-js.md",
+      "path": "technology/web-development-html-css-js.md",
       "title": "Web development: HTML, CSS, and JavaScript in practice",
-      "category": "",
+      "category": "technology",
       "bytes": 5069,
       "words": 792
     }

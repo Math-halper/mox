@@ -8,7 +8,7 @@ This folder is the library Mox reads. Every `.md` (or `.txt`, `.pdf`, `.csv`, `.
 | --- | --- | --- |
 | `math/` | Arithmetic and number sense, algebra, geometry and trigonometry, calculus, probability and statistics, formula reference, functions/logs/discrete math | 7 |
 | `reading/` | Reading comprehension, grammar and punctuation, writing and style, vocabulary and word roots, literature and rhetoric, forms and close reading | 6 |
-| `technology/` | How computers work, the internet and the web, programming fundamentals, AI and machine learning, cybersecurity and privacy, data and SQL, software engineering practices, web development | 7 |
+| `technology/` | How computers work, the internet and the web, programming fundamentals, AI and machine learning, cybersecurity and privacy, data and SQL, software engineering practices, web development | 8 |
 | `science/` | Physics, chemistry, biology and Earth science, astronomy and space, chemistry of reactions and materials, electricity/waves/modern physics | 6 |
 | `humanities/` | World history timeline, geography and cultures, philosophy and critical thinking, modern history 1900–today, cities/climate/maps | 5 |
 | `life/` | Health and wellbeing, money and personal finance, study skills and learning, careers and interviews, everyday law and civics, cooking and food safety | 6 |
