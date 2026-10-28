@@ -48,8 +48,8 @@ for identifier in sorted(ids_in_app - ids_in_html - DYNAMIC_IDS):
 runtime_assets = [
     "vendor/wllama/wllama.js",
     "vendor/wllama/wllama.wasm",
-    "vendor/pdfjs/pdf.min.mjs",
-    "vendor/pdfjs/pdf.worker.min.mjs",
+    "vendor/pdfjs/pdf.min.js",
+    "vendor/pdfjs/pdf.worker.min.js",
     "knowledge/index.json",
     "models/manifest.json",
 ]

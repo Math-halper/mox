@@ -1,7 +1,10 @@
 name: Publish Mox
 
-# Deploys the whole folder as a static site, so anyone can open Mox at
-# https://<owner>.github.io/mox/ with nothing installed.
+# Mox is a static site: model, runtime, and knowledge library are all files in
+# this repository. Anyone can use it at https://<owner>.github.io/mox/ with
+# nothing installed. Enable it once under Settings → Pages → Source: GitHub
+# Actions; after that every push republishes automatically.
+
 on:
   push:
     branches: [main, arena/09c15982-mox]
@@ -19,6 +22,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      pages: ${{ steps.status.outputs.enabled }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,20 +37,34 @@ jobs:
         run: |
           mkdir -p _site
           rsync -a --exclude '.git' --exclude '.github' --exclude '_site' ./ _site/
-          touch _site/.nojekyll
+          printf '' > _site/.nojekyll
           du -sh _site
 
+      - name: Is GitHub Pages enabled?
+        id: status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if curl -sf -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/pages" > /dev/null; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=GitHub Pages is off::Turn it on once at Settings → Pages → Source: GitHub Actions. This workflow then publishes Mox on every push."
+          fi
+
       - uses: actions/configure-pages@v5
-        with:
-          # Turns on GitHub Pages for the repository on the first run.
-          enablement: true
+        if: steps.status.outputs.enabled == 'true'
 
       - uses: actions/upload-pages-artifact@v3
+        if: steps.status.outputs.enabled == 'true'
         with:
           path: _site
 
   deploy:
     needs: build
+    if: needs.build.outputs.pages == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

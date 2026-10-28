@@ -6,8 +6,8 @@
 const WLLAMA_URL = new URL('vendor/wllama/wllama.js', import.meta.url).href;
 const WLLAMA_WASM = new URL('vendor/wllama/wllama.wasm', import.meta.url).href;
 const MODEL_MANIFEST = 'models/manifest.json';
-const PDFJS_URL = new URL('vendor/pdfjs/pdf.min.mjs', import.meta.url).href;
-const PDFJS_WORKER_URL = new URL('vendor/pdfjs/pdf.worker.min.mjs', import.meta.url).href;
+const PDFJS_URL = new URL('vendor/pdfjs/pdf.min.js', import.meta.url).href;
+const PDFJS_WORKER_URL = new URL('vendor/pdfjs/pdf.worker.min.js', import.meta.url).href;
 const KNOWLEDGE_INDEX = 'knowledge/index.json';
 
 const DB_NAME = 'mox-private-workspace';
@@ -990,13 +990,13 @@ async function loadModelFile(file) {
 
 (async function initialize() {
   if (window.location.protocol === 'file:') {
-    elements.modelTitle.textContent = 'Start the local server first';
-    elements.modelDescription.textContent = 'Browsers block WebAssembly and module loading from file:// URLs. Run `python3 run.py` in the project folder, then open the address it prints.';
+    elements.modelTitle.textContent = 'This page needs to be served';
+    elements.modelDescription.textContent = 'Browsers block WebAssembly and module loading from file:// URLs. Open the published Mox page, or run `python3 run.py` in the project folder and use the address it prints.';
     elements.progress.hidden = true;
     elements.load.disabled = true;
-    elements.load.innerHTML = '<span class="button-sparkle">⚠</span> Needs the local server';
-    setModelStatus('error', 'Open this page through run.py');
-    showToast('Run `python3 run.py` and open the printed http:// address.');
+    elements.load.innerHTML = '<span class="button-sparkle">⚠</span> Needs a web address';
+    setModelStatus('error', 'Open this page over http(s)');
+    showToast('Open the published page, or run `python3 run.py` and use the printed address.');
     return;
   }
   try {

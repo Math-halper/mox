@@ -33,6 +33,7 @@ class MoxHandler(SimpleHTTPRequestHandler):
         **SimpleHTTPRequestHandler.extensions_map,
         ".js": "text/javascript",
         ".mjs": "text/javascript",
+        ".js": "text/javascript",
         ".wasm": "application/wasm",
         ".json": "application/json",
         ".md": "text/markdown; charset=utf-8",
