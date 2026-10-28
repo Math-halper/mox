@@ -222,7 +222,9 @@ check('models: restore clears the hidden list', window.__mox.models.hidden().len
 document.querySelector('#modalDone')?.dispatchEvent(new window.Event('click', { bubbles: true }));
 
 /* catalog links */
-check('models: catalog offers a download link', window.__mox.models.catalog().some((entry) => /\.gguf$/.test(entry.download || '')));
+check('models: catalog offers a download link', window.__mox.models.catalog().some((entry) => /\.gguf(\?|$)/.test(entry.download || '')));
+check('models: catalog entries have a file page and a mirror', window.__mox.models.catalog().every((entry) => entry.page || entry.mirror));
+check('models: catalog download forces the file response', /\.gguf\?download=true$/.test(window.__mox.models.catalog()[0].download));
 check('models: recommended model is first in the catalog', /Qwen2\.5-Coder 1\.5B/.test(window.__mox.models.catalog()[0]?.name || ''));
 
 /* ------------------------------------------------------------------ models */

@@ -68,6 +68,12 @@ python3 tools/fetch_model.py --preset qwen-coder-1.5b
 python3 tools/fetch_model.py --preset qwen3-4b
 ```
 
+Each catalog entry can carry `page` (the Hugging Face file page, which always has a
+working Download button), `mirror` (a second host for the same file) and `sha256`
+(shown truncated in the app, so a download can be checked). If `huggingface.co` is
+blocked on the machine, download through a mirror instead:
+`python3 tools/fetch_model.py --preset qwen-coder-1.5b --mirror https://hf-mirror.com`.
+
 `manifest.json` also has a `catalog` array: recommended models that are **not** on
 disk yet, each with a `download` URL and a size. The model screen lists them with a
 plain download link, so a visitor can fetch the file and upload it without editing

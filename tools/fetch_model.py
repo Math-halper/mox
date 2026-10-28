@@ -12,6 +12,11 @@ Requires only the Python standard library.
     python3 tools/fetch_model.py --preset qwen-0.5b  # download a preset
     python3 tools/fetch_model.py --url <gguf-url> --name "My model"
     python3 tools/fetch_model.py --check             # what is on disk
+
+Behind a network that blocks huggingface.co, point the script at a mirror:
+
+    HF_ENDPOINT=https://hf-mirror.com python3 tools/fetch_model.py --preset qwen-coder-1.5b
+    python3 tools/fetch_model.py --preset qwen-coder-1.5b --mirror https://hf-mirror.com
 """
 from __future__ import annotations
 
@@ -87,6 +92,16 @@ PRESETS = {
         "note": "About 800 MB. Good general chat model.",
     },
 }
+
+
+def apply_endpoint(url: str, endpoint: str | None) -> str:
+    """Rewrite a huggingface.co URL to a mirror host when one is requested."""
+    if not endpoint:
+        return url
+    endpoint = endpoint.rstrip("/")
+    if url.startswith("https://huggingface.co"):
+        return endpoint + url[len("https://huggingface.co"):]
+    return url
 
 
 def human(size: float) -> str:
@@ -166,7 +181,14 @@ def main() -> int:
     parser.add_argument("--file", help="file name to save as (defaults to the URL's name)")
     parser.add_argument("--list", action="store_true", dest="list_only")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument(
+        "--mirror",
+        metavar="ENDPOINT",
+        help="download from a Hugging Face mirror, e.g. https://hf-mirror.com "
+             "(HF_ENDPOINT works too)",
+    )
     args = parser.parse_args()
+    endpoint = args.mirror or os.environ.get("HF_ENDPOINT")
 
     if args.list_only:
         print("Presets:")
@@ -196,8 +218,13 @@ def main() -> int:
         }
 
     destination = MODELS / preset["file"]
+    preset["url"] = apply_endpoint(preset["url"], endpoint)
     print(f"Model:  {preset['name']}")
     print(f"Target: {destination.relative_to(ROOT)}")
+    if endpoint:
+        print(f"Mirror: {endpoint}")
+    elif "huggingface.co" in preset["url"]:
+        print("Source: huggingface.co (if this is blocked, retry with --mirror https://hf-mirror.com)")
     if destination.exists():
         print("  already downloaded — registering it instead")
     else:

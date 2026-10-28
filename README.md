@@ -105,11 +105,26 @@ automatically from then on.
 The same screen lists recommended models that are not on disk yet, with a direct
 download link; the page itself never fetches weights from anywhere but this site.
 
-**Where to get the recommended one:** [Qwen2.5-Coder 1.5B Instruct,
-Q4_K_M](https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf)
-(~1.1 GB) — download it, then upload it in the app. Large models are limited by the
-browser's storage quota and by the tab's memory — a few hundred MB is comfortable,
+**Where to get the recommended one** — Qwen2.5-Coder 1.5B Instruct, Q4_K_M, 1.12 GB
+(sha256 `cc324af0…bb046`):
+
+- Direct: <https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf?download=true>
+- File page (with a Download button): <https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/blob/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf>
+- Mirror, 0.99 GB: <https://huggingface.co/lmstudio-community/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf?download=true>
+- Mirror site if `huggingface.co` is blocked: <https://hf-mirror.com/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf>
+
+Download it, then upload it in the app. Large models are limited by the browser's
+storage quota and by the tab's memory — a few hundred MB is comfortable,
 multi-gigabyte files are not.
+
+If a download stalls, it is almost always the network, not the link: `huggingface.co`
+and its `cas-bridge.xethub.hf.co` CDN are blocked in some networks. Use a mirror, or
+pull it with the script through one:
+
+```sh
+python3 tools/fetch_model.py --preset qwen-coder-1.5b --mirror https://hf-mirror.com
+HF_ENDPOINT=https://hf-mirror.com python3 tools/fetch_model.py --preset qwen-coder-1.5b
+```
 
 The script saves the GGUF into `models/` and registers it in `models/manifest.json`.
 Reload the page, open **Model & settings**, and pick it. You can also load any `.gguf`

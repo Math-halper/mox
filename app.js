@@ -1751,9 +1751,16 @@ function catalogMarkup() {
             <strong>${escapeHTML(entry.name)}</strong>
             <span>${escapeHTML([entry.parameters, entry.quantization, displaySize(entry.bytes), entry.license].filter(Boolean).join(' · '))}</span>
             ${entry.note ? `<em>${escapeHTML(entry.note)}</em>` : ''}
+            ${entry.sha256 ? `<em class="model-catalog-sha" title="SHA-256 of the file">sha256 ${escapeHTML(entry.sha256.slice(0, 16))}…</em>` : ''}
           </div>
-          ${entry.download ? `<a class="model-catalog-link" href="${escapeHTML(entry.download)}" target="_blank" rel="noopener noreferrer">Download .gguf ↗</a>` : ''}
+          <div class="model-catalog-actions">
+            ${entry.download ? `<a class="model-catalog-link" href="${escapeHTML(entry.download)}" target="_blank" rel="noopener noreferrer">Download .gguf ↗</a>` : ''}
+            ${entry.page ? `<a class="model-catalog-secondary" href="${escapeHTML(entry.page)}" target="_blank" rel="noopener noreferrer">File page ↗</a>` : ''}
+            ${entry.mirror ? `<a class="model-catalog-secondary" href="${escapeHTML(entry.mirror)}" target="_blank" rel="noopener noreferrer" title="${escapeHTML(entry.mirrorName || 'Mirror download')}">Mirror ↗</a>` : ''}
+            ${entry.download ? `<button type="button" class="model-catalog-secondary" data-copy-link="${escapeHTML(entry.download)}" title="Copy the download link">Copy link</button>` : ''}
+          </div>
         </div>`).join('')}
+      <p class="model-catalog-foot">If a download fails, the network is usually blocking <code>huggingface.co</code> or its CDN. Try the mirror, the file page, or <code>HF_ENDPOINT=https://hf-mirror.com python3 tools/fetch_model.py --preset qwen-coder-1.5b</code>.</p>
     </div>`;
 }
 
@@ -1860,6 +1867,28 @@ function openModal(kind = 'privacy', category = null) {
     await unhideModels();
     openModal(kind, category);
     showToast('Hidden models restored.');
+  });
+
+  elements.modalCopy.querySelectorAll('[data-copy-link]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const link = button.dataset.copyLink;
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(link);
+        copied = true;
+      } catch {
+        const area = document.createElement('textarea');
+        area.value = link;
+        area.style.position = 'fixed';
+        area.style.opacity = '0';
+        document.body.append(area);
+        area.select();
+        try { copied = document.execCommand?.('copy') !== false; } catch { copied = false; }
+        area.remove();
+      }
+      button.textContent = copied ? 'Copied' : 'Copy failed';
+      setTimeout(() => { button.textContent = 'Copy link'; }, 1500);
+    });
   });
 
   // Pick a model: loads in place, no page reload.
