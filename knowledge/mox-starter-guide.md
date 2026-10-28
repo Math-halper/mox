@@ -11,15 +11,23 @@ Mox is a local-first AI workspace. A real language model ships with the site, ru
 
 Because the model is small it is fast to start and light on memory, but its reasoning is limited. It is best at summarizing, rewording, and explaining passages that the retrieval step hands it.
 
-### Upgrading the model
+### Choosing and uploading models
 
-Download a larger GGUF once (for example `python3 tools/fetch_model.py --preset qwen-0.5b`), or drop any `.gguf` chat model into `models/` and list it in `models/manifest.json`. Open **Model & settings** in the sidebar to switch between the models on disk. Bigger models answer better and run slower on a CPU.
+Open the model menu at the top of the page to see every available model. Download a larger GGUF once (for example `python3 tools/fetch_model.py --preset qwen-0.5b`) and list it in `models/manifest.json`, or upload a `.gguf` straight from your computer with **Upload a .gguf**. Uploads are copied into this browser's storage, marked "your upload" in the picker, remembered after a reload, and can be removed there. Bigger models answer better and run slower on a CPU; a few hundred megabytes is the practical limit for a browser tab.
+
+## The workspace and the calculator
+
+Two tools sit beside the chat and do not need the model to work:
+
+- **Workspace** (`⌘⇧E` or the Workspace button) is a small code editor with a file list, a live preview of `index.html`, a console that shows errors from the page you are building, and desktop/tablet/phone preview widths. Files are saved in this browser. Under the preview, **Ask Mox** can rewrite the files: you review the changes and press Apply. In chat, Mox may also write files by replying with blocks headed `mox:write path=index.html`; the workspace toggle "Mox may edit files" controls whether those are applied automatically, and Undo restores the previous version.
+- **Calculator** (`⌘J` or the Calculator button) evaluates expressions exactly: arithmetic, powers, factorial, trigonometry, logarithms, statistics, combinations, percentages, and unit conversions such as `10 km to mi` or `72 F in C`. Answers in chat that contain `<calc>2 + 2</calc>` are computed by the same engine, so the number is right rather than guessed, and a question that is only arithmetic ("what is 1234 × 5678?") is answered by the calculator directly instead of the model.
+- Any chat answer containing HTML, CSS, or JavaScript gets a **Preview code** button that opens it in the workspace preview.
 
 ## Chats, shortcuts, and offline use
 
 Every conversation is saved in this browser and listed in the sidebar, so closing the tab does not lose it. Open an old chat to pick it up again, or press the small × beside its title to delete it. Inside a conversation, Stop halts a long answer, Copy puts the text on the clipboard, and Regenerate asks the same question again. Every answer lists the passages it used: click one to read the exact text.
 
-Keyboard: ⌘K or Ctrl K starts a new chat, ⌘/ or Ctrl / jumps to the message box, Enter sends, Shift Enter starts a new line, and Escape closes a dialog or the phone drawer.
+Keyboard: ⌘K or Ctrl K starts a new chat, ⌘/ or Ctrl / jumps to the message box, ⌘J opens the calculator, ⌘⇧E opens the workspace, Enter sends, Shift Enter starts a new line, and Escape closes a dialog or a panel.
 
 Once the page has been opened, a service worker keeps a copy of it. A reload with no internet connection still opens Mox and answers from the model and library already stored on the device. Files can be dragged onto the message box or pasted into it instead of using the Add a folder button.
 
@@ -34,11 +42,11 @@ The first visit transfers the 94 MB model file; after that the browser serves it
 
 ## The knowledge library
 
-`knowledge/` holds 39 documents — about 29k words — covering:
+`knowledge/` holds 43 documents — about 39k words — covering:
 
 - Mathematics: arithmetic, algebra, geometry, trigonometry, calculus, probability, statistics, and a formula sheet.
 - Reading and writing: comprehension, grammar, vocabulary, style, literature, and rhetoric.
-- Technology: computers, the internet, programming, AI, security, and databases.
+- Technology: computers, the internet, programming, AI, security, databases, APIs, and full reference documents for HTML, CSS, and JavaScript.
 - Science: physics, chemistry, biology, Earth science, and astronomy.
 - Humanities: history, geography, culture, philosophy, and critical thinking.
 - Life skills: health, personal finance, and study methods.
@@ -53,7 +61,7 @@ To add a document to the built-in library so it loads automatically, drop it int
 
 ## When Mox has sources, and when it doesn't
 
-If your question matches something in the library, Mox puts those passages in front of the model, cites them as [1], [2], and links them under the answer so you can read the exact text. If nothing matches — a greeting, simple arithmetic, something outside the 39 documents — Mox answers from the model's own knowledge and says so in one line under the reply. It should never claim it has "no sources" or refuse a question just because the library is silent.
+If your question matches something in the library, Mox puts those passages in front of the model, cites them as [1], [2], and links them under the answer so you can read the exact text. If nothing matches — a greeting, simple arithmetic, something outside the 43 documents — Mox answers from the model's own knowledge and says so in one line under the reply. It should never claim it has "no sources" or refuse a question just because the library is silent.
 
 When the library does match but only partly, the answer uses the passages and then fills in. Treat it as a fast study aid, not an authority: check anything that matters against the cited document or another source.
 

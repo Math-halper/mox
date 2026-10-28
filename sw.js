@@ -6,12 +6,15 @@
  * the network fails. The 94 MB model is not cached here — the browser's own
  * HTTP cache handles it, and the engine keeps its copy of the weights.
  */
-const CACHE = 'mox-shell-v1';
+const CACHE = 'mox-shell-v2';
 const SHELL = [
   './',
   './index.html',
   './styles.css',
   './app.js',
+  './calculator.js',
+  './workspace.js',
+  './model-store.js',
   './knowledge/index.json',
   './models/manifest.json',
   './vendor/wllama/wllama.js'

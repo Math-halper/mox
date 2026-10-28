@@ -8,16 +8,22 @@ dark theme, a model that ships with the app, and a substantial knowledge library
 
 - **The model is included.** `models/smollm2-135m-instruct-q4_1.gguf` (94 MB,
   Apache-2.0) is served by this same website and executed by llama.cpp compiled to
-  WebAssembly. No Hugging Face download, no API key, no server.
+  WebAssembly. No Hugging Face download, no API key, no server. Upload your own
+  `.gguf` and it joins the model picker, stored in this browser for next time.
+- **A code workspace.** A full-screen editor with a file tree, live preview,
+  console, and an AI panel. Mox can read the files and rewrite them from chat by
+  emitting `mox:write` blocks; every change can be undone.
+- **A real calculator.** A safe expression engine (no `eval`) with trigonometry,
+  logarithms, statistics, combinatorics, percentages, and unit conversion, plus
+  `<calc>…</calc>` tags that make arithmetic in answers exact.
 - **Black and white, high contrast.** A chat-style workspace — sidebar of past chats,
   knowledge and files, a single centered composer — rendered in pure greyscale (every
   colour is `#000`, `#fff`, or a white alpha). Body text sits at 21:1 against the
   background and the dimmest label still clears 7:1, so it stays readable in bright
   light. No web fonts, no CDN assets.
-- **Knowledge included.** 39 documents (~29k words) on math, reading and writing,
-  technology (including software engineering and web development), science, humanities
-  (including modern history and urban geography), and life skills (careers, everyday law,
-  cooking), indexed in the browser.
+- **Knowledge included.** 43 documents (~39k words) on math, reading and writing,
+  technology (including full HTML, CSS, JavaScript, and API references), science,
+  humanities, and life skills, indexed in the browser.
 
 ## Use it — no setup for anyone
 
@@ -69,7 +75,7 @@ them it runs single-threaded and answers a little slower. Everything else is ide
 | Model | SmolLM2 135M Instruct (`HuggingFaceTB`), Q4_1 quantization |
 | Size | 94 MB, one file, committed to this repository |
 | Runtime | [wllama](https://github.com/ngxson/wllama) 3.8.1 — llama.cpp in WebAssembly, vendored in `vendor/wllama/` |
-| Context | 4,096 tokens per session (the model supports 8,192) |
+| Context | 8,192 tokens per session (the most the model supports) |
 | License | Apache-2.0 |
 
 It loads from `models/` through `models/manifest.json`, so the weights never leave this
@@ -83,6 +89,12 @@ python3 tools/fetch_model.py --list               # presets
 python3 tools/fetch_model.py --preset qwen-0.5b   # ~400 MB, better answers
 python3 tools/fetch_model.py --check              # what is on disk
 ```
+
+You can also use **Model & settings → Upload a .gguf**. Uploaded models are copied
+into IndexedDB, appear in the same picker (marked *your upload*), and are selected
+automatically from then on. They can be removed from the picker, which frees the
+space. Large models are limited by the browser's storage quota and by the tab's
+memory — a few hundred MB is comfortable, multi-gigabyte files are not.
 
 The script saves the GGUF into `models/` and registers it in `models/manifest.json`.
 Reload the page, open **Model & settings**, and pick it. You can also load any `.gguf`
@@ -99,7 +111,8 @@ knowledge/
 ├── README.md           how the library works and how to extend it
 ├── math/               6 — arithmetic, algebra, geometry, calculus, statistics, formulas
 ├── reading/            5 — comprehension, grammar, vocabulary, style, literature
-├── technology/         6 — computers, web, programming, AI, security, data
+├── technology/         12 — computers, web, programming, AI, security, data,
+│                           plus full HTML, CSS, JavaScript, and API references
 ├── science/            4 — physics, chemistry, biology + Earth, astronomy
 ├── humanities/         3 — history, geography and culture, philosophy
 └── life/               3 — health, money, study skills
@@ -129,6 +142,57 @@ Answers then take one of two paths:
   It is never told to claim it has no sources, which used to make it refuse plain
   questions like "what is 2+2?".
 
+## The code workspace
+
+Open it with **Workspace** in the sidebar or the top bar (`⌘⇧E` / `Ctrl Shift E`).
+It is a small IDE sized for a browser:
+
+- **Files** on the left (`index.html`, `styles.css`, `script.js` by default) stored in
+  IndexedDB, importable from your computer, renameable and deletable.
+- **Editor** in the middle: line numbers, tab indentation, `⌘S` save, `⌘↵` refresh.
+  Changes save automatically as you type.
+- **Live preview** on the right in a sandboxed iframe, with desktop/tablet/phone
+  widths, pop-out, and a console that captures `console.log`, warnings, and runtime
+  errors from the page you are building.
+- **Ask Mox** under the preview. Describe a change ("add a dark mode toggle") and the
+  model returns complete files; review them and press **Apply changes**. Nothing is
+  written until you apply. The workspace toggle **Mox may edit files** also lets chat
+  answers apply `mox:write` blocks directly; **Undo** restores the previous version.
+
+The AI receives a manifest of the files, and their contents when the question is
+about code, so it edits what is really there instead of guessing.
+
+### Visualising code from chat
+
+Any answer that contains an HTML, CSS, or JavaScript block gets a **Preview code**
+button. It loads the snippet into the workspace, wires the stylesheet and script
+together, and renders it in the live preview — then you can edit it.
+
+## The calculator
+
+Open it with **Calculator** (`⌘J` / `Ctrl J`). It evaluates expressions with a real
+parser rather than `eval`, and it is the same engine that resolves
+`<calc>…</calc>` in answers.
+
+- Arithmetic, `^`/`**`, factorial `!`, percent `%`, implicit multiplication
+  (`2(3+4)`), hex/binary literals.
+- Functions: `sqrt`, `cbrt`, `root`, `pow`, `exp`, `ln`, `log`, `log2`, `abs`,
+  `floor`, `ceil`, `round`, `trunc`, `clamp`, `lerp`, `sin`, `cos`, `tan`, `asin`,
+  `acos`, `atan`, `atan2`, hyperbolic variants, `deg`, `rad`, `hypot`, `mod`, `rem`,
+  `gcd`, `lcm`, `fact`, `ncr`, `npr`, `isprime`, `min`, `max`, `sum`, `product`,
+  `mean`, `median`, `mode`, `variance`, `stdev`, `samplevariance`, `samplestdev`,
+  `pct`, `increase`, `decrease`, `percentchange`, `random`, `randint`, `convert`.
+- Constants: `pi`, `e`, `tau`, `phi`, `inf`, `nan`.
+- Natural conversions: `10 km to mi`, `72 F in C`, `20% of 150`, plus a unit panel
+  covering length, mass, temperature, time, storage, speed, area, volume, energy,
+  pressure, angle, frequency, power, and force.
+- History stays in this browser; click an entry to reuse it.
+
+Questions that are purely arithmetic ("what is 1234 × 5678?", "15% of 80",
+"convert 10 km to mi") are answered by the calculator directly, so the result is
+exact even though the bundled model is small. For scripting,
+`__mox.calc('sqrt(2)')` returns `{ ok, value, text }`.
+
 ## What you get in the UI
 
 - **Conversations that persist.** Every chat is stored in IndexedDB, listed in the
@@ -141,8 +205,9 @@ Answers then take one of two paths:
   on-device and searchable alongside the bundled library.
 - **Offline after the first visit.** A service worker keeps the page itself, so a reload
   with no connection still opens Mox and answers from the loaded model.
-- **Keyboard first:** `⌘K` / `Ctrl K` new chat, `⌘/` focus the composer, `Enter` send,
-  `Shift Enter` newline, `Esc` close, `Tab` cycles inside dialogs.
+- **Keyboard first:** `⌘K` / `Ctrl K` new chat, `⌘/` focus the composer, `⌘J` calculator,
+  `⌘⇧E` workspace, `Enter` send, `Shift Enter` newline, `Esc` close, `Tab` cycles
+  inside dialogs.
 - **Search-only mode:** if the model cannot start, questions still return the matching
   passages instead of failing.
 - **Knowledge toggle** in the sidebar, a filterable library by topic, chat export as
@@ -158,17 +223,21 @@ python3 tools/check_site.py              # asset, id, index, GGUF, and branding 
 python3 run.py                           # serve locally on http://localhost:8000
 
 npm install --no-save jsdom fake-indexeddb   # dev-only, for the UI tests
-node tests/ui-check.mjs                      # 40 interface checks in a headless DOM
+node tests/ui-check.mjs                      # 124 checks in a headless DOM
 ```
 
 `tests/ui-check.mjs` boots the real `index.html` and `app.js`, then drives them the way
 a person would: ask a question, open a source passage, open the phone drawer, reload to
 prove the history survived, switch chats, delete one. It also asserts the markdown
-renderer and retrieval quality, including singular/plural agreement.
+renderer, retrieval quality (including singular/plural agreement), the calculator
+engine, workspace file writes and preview assembly, and the model picker.
 
 ## Project layout
 
 - `index.html`, `styles.css`, `app.js` — the browser app
+- `workspace.js` — code workspace: files, editor, sandboxed preview, console, AI edits
+- `calculator.js` — expression parser, function library, unit conversions, calculator UI
+- `model-store.js` — uploaded GGUF models in IndexedDB, merged into the model picker
 - `models/` — `manifest.json` + the bundled GGUF (extra models git-ignored)
 - `knowledge/` — the library and its generated `index.json`
 - `vendor/wllama/` — llama.cpp WebAssembly runtime (MIT)

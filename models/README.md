@@ -18,7 +18,7 @@ models/
 | Model | `HuggingFaceTB/SmolLM2-135M-Instruct` |
 | Quantization | Q4_1 (GGUF v3) |
 | Size | 98,362,432 bytes |
-| Context | 8,192 trained, 4,096 used per session |
+| Context | 8,192 trained and used per session |
 | License | Apache-2.0 |
 
 It is committed so a fresh clone runs a real model with no downloads.
@@ -47,9 +47,13 @@ Each download is registered in `manifest.json`:
 }
 ```
 
-To add one by hand, copy the `.gguf` in, append an entry, and reload the page. You can
-also load a `.gguf` from your computer at runtime without touching this folder
-(**Model & settings → Load a .gguf from this computer**).
+To add one by hand, copy the `.gguf` in, append an entry, and reload the page.
+
+You can also upload a `.gguf` from your computer at runtime without touching this
+folder (**Model & settings → Upload a .gguf**). Uploads are copied into the browser's
+IndexedDB, appear in the same picker marked *your upload*, and survive reloads until
+you remove them. They are never sent anywhere. Keep uploads to a few hundred MB: the
+browser's storage quota and the tab's memory are the limit, not git.
 
 ## Why only one file is in git
 
