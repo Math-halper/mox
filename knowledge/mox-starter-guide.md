@@ -17,11 +17,12 @@ Download a larger GGUF once (for example `python3 tools/fetch_model.py --preset 
 
 ## Starting up
 
-1. Run `python3 run.py` (Windows: `start-mox.bat`, macOS: `start-mox.command`).
-2. Open the address it prints, usually `http://localhost:8000`.
-3. The bundled model loads automatically. Ask a question.
+Mox is a static website, so there is nothing to install.
 
-After the first load the browser keeps a copy, so the app keeps working offline.
+- **Hosted:** open the published address (for this project, `https://math-halper.github.io/mox/`). The model loads automatically on the first visit.
+- **Local:** run `python3 run.py` (Windows: `start-mox.bat`, macOS: `start-mox.command`) and open the address it prints, usually `http://localhost:8000`.
+
+The first visit transfers the 94 MB model file; after that the browser serves it from its cache, so the app opens quickly and keeps working offline. Opening `index.html` directly from disk does not work, because browsers block WebAssembly over `file://` URLs.
 
 ## The knowledge library
 

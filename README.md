@@ -13,15 +13,48 @@ dark theme, a model that ships with the app, and a substantial knowledge library
 - **Knowledge included.** 28 documents (~18,000 words) on math, reading and writing,
   technology, science, humanities, and life skills, indexed in the browser.
 
-## Run it
+## Use it — no setup for anyone
+
+Mox is a plain static site. There is no backend, no account, and no API key, so any
+static host can serve it and visitors just open a link.
+
+**Publish it once, then share the URL**
+
+1. In this repository: **Settings → Pages → Source: GitHub Actions** (one toggle).
+2. Push to `main` (or run the *Publish Mox* workflow manually).
+3. Your site is live at `https://<owner>.github.io/mox/` — for this repo,
+   <https://math-halper.github.io/mox/>.
+
+Every push after that republishes automatically; `tools/check_site.py` runs in the
+workflow, so a broken site fails the build instead of the deploy.
+
+**Or publish somewhere else, also without setup**
+
+- **Netlify Drop** — drop this folder on <https://app.netlify.com/drop>. The included
+  `_headers` file turns on cross-origin isolation, which makes the engine multi-threaded.
+- **Cloudflare Pages** — create a project from this repo, framework preset *None*,
+  build command empty, output directory `/`.
+- **Any file host** — the site is only HTML, CSS, JS, JSON, GGUF, and WASM files.
+
+**Run it locally** (optional; nothing needs installing)
 
 ```sh
-python3 run.py
+python3 run.py          # nicer MIME types, caching, and multi-thread flag
+python3 -m http.server  # also works, if Python knows .wasm
 ```
 
-Open the address it prints (usually <http://localhost:8000>) and the bundled model
-starts loading automatically. `start-mox.command` (macOS/Linux) and `start-mox.bat`
-(Windows) do the same. No pip packages, accounts, or API keys.
+`start-mox.command` (macOS/Linux) and `start-mox.bat` (Windows) are shortcuts for
+`python3 run.py`.
+
+> Opening `index.html` straight from disk does **not** work: browsers block WebAssembly
+> and module loading over `file://`. Use a URL, local or hosted.
+
+### Why hosting matters for speed, not features
+
+The model and runtime are ordinary files in this repository, so a static host is
+enough. If the host sends `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy`
+(as `run.py` and `_headers` do), the WebAssembly engine can use several threads; without
+them it runs single-threaded and answers a little slower. Everything else is identical.
 
 ## The model
 
