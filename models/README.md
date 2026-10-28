@@ -68,6 +68,11 @@ python3 tools/fetch_model.py --preset qwen-coder-1.5b
 python3 tools/fetch_model.py --preset qwen3-4b
 ```
 
+`manifest.json` also has a `catalog` array: recommended models that are **not** on
+disk yet, each with a `download` URL and a size. The model screen lists them with a
+plain download link, so a visitor can fetch the file and upload it without editing
+this folder. Remove an entry from `catalog` once you ship the weights yourself.
+
 ## Why only one file is in git
 
 GitHub rejects files above 100 MB, and weight binaries bloat a repository. The bundled

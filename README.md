@@ -92,9 +92,24 @@ python3 tools/fetch_model.py --check              # what is on disk
 
 You can also use **Model & settings → Upload a .gguf**. Uploaded models are copied
 into IndexedDB, appear in the same picker (marked *your upload*), and are selected
-automatically from then on. They can be removed from the picker, which frees the
-space. Large models are limited by the browser's storage quota and by the tab's
-memory — a few hundred MB is comfortable, multi-gigabyte files are not.
+automatically from then on.
+
+**Choosing and deleting models.** Every entry in the picker has two buttons:
+
+- **Use this model** loads it in place — the page does not reload. The current one is
+  marked *In use*.
+- **Delete** removes it. An uploaded model is deleted from browser storage, freeing
+  the space. A model served from `models/` can only be *removed from the list* (the
+  file belongs to the site) — **Restore hidden models** brings it back.
+
+The same screen lists recommended models that are not on disk yet, with a direct
+download link; the page itself never fetches weights from anywhere but this site.
+
+**Where to get the recommended one:** [Qwen2.5-Coder 1.5B Instruct,
+Q4_K_M](https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf)
+(~1.1 GB) — download it, then upload it in the app. Large models are limited by the
+browser's storage quota and by the tab's memory — a few hundred MB is comfortable,
+multi-gigabyte files are not.
 
 The script saves the GGUF into `models/` and registers it in `models/manifest.json`.
 Reload the page, open **Model & settings**, and pick it. You can also load any `.gguf`

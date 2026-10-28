@@ -41,7 +41,8 @@ ids_in_html = set(re.findall(r'\bid="([^"]+)"', html))
 ids_in_app = set(re.findall(r"\$\('#([A-Za-z0-9_-]+)'\)", app))
 # Rendered by app.js into modals/toasts rather than present in index.html.
 DYNAMIC_IDS = {"modelUpload", "modelRefresh", "modelStorage", "exportChat", "clearChats",
-               "libraryFilter", "copyPassage", "readWholeDoc"}
+               "libraryFilter", "copyPassage", "readWholeDoc",
+               "modelRestore", "modelSwitchStatus"}
 for identifier in sorted(ids_in_app - ids_in_html - DYNAMIC_IDS):
     problems.append(f"app.js looks up #{identifier} but index.html has no such id")
 

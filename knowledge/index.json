@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "generated": "2026-10-28T20:58:59Z",
+  "generated": "2026-10-28T21:03:59Z",
   "categories": [
     {
       "id": "math",
@@ -169,8 +169,8 @@
       "path": "mox-starter-guide.md",
       "title": "About this workspace",
       "category": "",
-      "bytes": 6957,
-      "words": 1124
+      "bytes": 7243,
+      "words": 1173
     },
     {
       "path": "reading/grammar-and-punctuation.md",

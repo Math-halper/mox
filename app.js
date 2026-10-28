@@ -586,7 +586,7 @@ function updateUploadBadge(count) {
 }
 
 function activeModel() {
-  const available = modelManifest?.available || [];
+  const available = typeof visibleModels === 'function' ? visibleModels() : (modelManifest?.available || []);
   return available.find((entry) => entry.id === chosenModelId) || available[0] || null;
 }
 
@@ -731,6 +731,7 @@ async function startModel({ auto = false } = {}) {
     elements.load.disabled = true;
     setSourceBadge('local', '◈ model on this site');
     setModelStatus('ready', `${model.name} ready`);
+    updateModelMenu();
     updateComposer();
     await writeMeta('modelChoice', model.id);
     if (!auto) showToast(`${model.name} loaded. Ask something about the knowledge library.`);
@@ -1611,35 +1612,166 @@ function openPassage(record, index) {
   revealModal();
 }
 
-function modelListMarkup({ manage = false } = {}) {
-  const available = modelManifest?.available || [];
-  if (!available.length) {
-    return '<p>No model files were found in <code>models/</code>. Upload a <code>.gguf</code> below, or run <code>python3 tools/fetch_model.py</code> and reload.</p>';
+// Models removed from the picker. Uploads are deleted outright; models served
+// from models/ can only be hidden, because the file belongs to the site.
+let hiddenModels = [];
+
+function visibleModels() {
+  return (modelManifest?.available || []).filter((entry) => !hiddenModels.includes(entry.id));
+}
+
+async function hideModel(id) {
+  if (!hiddenModels.includes(id)) hiddenModels.push(id);
+  await writeMeta('hiddenModels', hiddenModels);
+  if (chosenModelId === id) {
+    chosenModelId = null;
+    await writeMeta('modelChoice', null);
   }
-  return `<div class="model-choices">${available.map((entry) => `
-    <div class="model-choice${entry.id === chosenModelId ? ' active' : ''}">
-      <button type="button" class="model-choice-pick" data-model="${escapeHTML(entry.id)}">
+  await readModelManifest();
+}
+
+async function unhideModels() {
+  hiddenModels = [];
+  await writeMeta('hiddenModels', hiddenModels);
+  await readModelManifest();
+}
+
+function updateModelMenu() {
+  const nameEl = document.querySelector('.model-menu-name');
+  const subEl = document.querySelector('.model-menu-sub');
+  const model = loadedModel || activeModel();
+  if (!nameEl) return;
+  if (!model) { nameEl.textContent = 'Mox'; if (subEl) subEl.textContent = ''; return; }
+  const short = model.name.split(/\s+/)[0];
+  nameEl.textContent = short || model.name;
+  if (subEl) subEl.textContent = model.parameters || (model.quantization || '');
+}
+
+// Drop the loaded weights so the app falls back to search-only until another
+// model is picked. Used when the selected model is deleted or hidden.
+function unloadEngine(reason = '') {
+  if (generating) stopGeneration();
+  try { engine?.exit?.(); } catch (error) { console.warn('Could not unload the model:', error); }
+  engine = null;
+  llm = null;
+  loadedModel = null;
+  modelReady = false;
+  searchOnly = true;
+  elements.progress.hidden = true;
+  elements.load.disabled = false;
+  elements.load.classList.remove('loaded');
+  elements.load.innerHTML = '<span class="button-sparkle">✳</span> Start a model';
+  elements.modelTitle.textContent = 'Search-only mode';
+  elements.modelDescription.textContent = 'No model is loaded. Pick one in Model & settings, or upload a .gguf.';
+  elements.modelSize.textContent = 'Search only';
+  setModelStatus('idle', 'No model loaded');
+  setSourceBadge('remote', '◈ search only');
+  updateComposer();
+  updateModelMenu();
+  if (reason) showToast(reason);
+}
+
+// Switch models without reloading the page: unload the current weights, then
+// load the chosen ones through the same progress path as the start card.
+async function switchModel(id) {
+  const entry = visibleModels().find((model) => model.id === id);
+  if (!entry) return false;
+  if (generating) stopGeneration();
+
+  chosenModelId = id;
+  await writeMeta('modelChoice', id);
+
+  modelReady = false;
+  searchOnly = false;
+  loadedModel = null;
+  llm = null;
+  if (engine) {
+    try { await engine.exit?.(); } catch (error) { console.warn('Could not unload the previous model:', error); }
+    engine = null;
+  }
+
+  // startModel refuses to run when the button is disabled or marked loaded.
+  elements.load.disabled = false;
+  elements.load.classList.remove('loaded');
+  elements.load.innerHTML = '<span class="button-sparkle">✳</span> Start the model';
+  elements.progress.hidden = false;
+  elements.progressBar.style.width = '0%';
+  elements.progressPercent.textContent = '0%';
+  elements.modelSize.textContent = displaySize(entry.bytes);
+  updateComposer();
+  updateModelMenu();
+
+  await startModel({ auto: true });
+  if (!modelReady) {
+    showToast(`${entry.name} could not start in this tab. Reload the page to try again.`);
+    return false;
+  }
+  updateModelMenu();
+  showToast(`${entry.name} is ready.`);
+  return true;
+}
+
+function modelListMarkup({ manage = false } = {}) {
+  const available = visibleModels();
+  if (!available.length) {
+    return `<p>No models are available. Upload a <code>.gguf</code> below${hiddenModels.length ? ', or restore the hidden ones' : ', or run <code>python3 tools/fetch_model.py</code>'}.</p>`;
+  }
+  return `<div class="model-choices">${available.map((entry) => {
+    const inUse = entry.id === chosenModelId;
+    return `
+    <div class="model-choice${inUse ? ' active' : ''}">
+      <div class="model-choice-head">
         <span class="model-choice-name">${escapeHTML(entry.name)}${entry.bundled ? ' <em>bundled</em>' : ''}${entry.uploaded ? ' <em>your upload</em>' : ''}</span>
-        <span class="model-choice-meta">${escapeHTML([entry.parameters, entry.quantization, displaySize(entry.bytes), entry.license].filter(Boolean).join(' · '))}${entry.bytes > 1.5e9 ? ' · heavy for a tab' : ''}</span>
-        ${entry.note ? `<span class="model-choice-note">${escapeHTML(entry.note)}</span>` : ''}
-      </button>
-      ${manage && entry.uploaded ? `<button type="button" class="model-choice-remove" data-remove-model="${escapeHTML(entry.id)}" title="Remove ${escapeHTML(entry.name)} from this browser">Remove</button>` : ''}
-    </div>`).join('')}</div>`;
+        ${inUse ? `<span class="model-choice-badge">${modelReady ? 'In use' : 'Selected'}</span>` : ''}
+      </div>
+      <span class="model-choice-meta">${escapeHTML([entry.parameters, entry.quantization, displaySize(entry.bytes), entry.license].filter(Boolean).join(' · '))}${entry.bytes > 1.5e9 ? ' · heavy for a tab' : ''}</span>
+      ${entry.note ? `<span class="model-choice-note">${escapeHTML(entry.note)}</span>` : ''}
+      ${manage ? `<div class="model-choice-actions">
+        <button type="button" class="model-use${inUse ? ' current' : ''}" data-use-model="${escapeHTML(entry.id)}"${inUse ? ' disabled' : ''}>${inUse ? (modelReady ? 'In use' : 'Selected') : 'Use this model'}</button>
+        <button type="button" class="model-delete" data-remove-model="${escapeHTML(entry.id)}" title="${entry.uploaded ? `Delete ${escapeHTML(entry.name)} from this browser` : `Remove ${escapeHTML(entry.name)} from this list`}">${entry.uploaded ? 'Delete' : 'Remove from list'}</button>
+      </div>` : ''}
+    </div>`;
+  }).join('')}</div>`;
+}
+
+// Models this site knows about but that are not on disk yet. Downloading is a
+// plain link the visitor clicks; the page itself never fetches model weights
+// from anywhere but this site.
+function catalogMarkup() {
+  const available = new Set((modelManifest?.available || []).map((entry) => entry.file));
+  const hidden = new Set(hiddenModels);
+  const entries = (modelManifest?.catalog || []).filter((entry) => !available.has(entry.file) && !hidden.has(entry.id));
+  if (!entries.length) return '';
+  return `
+    <div class="model-catalog">
+      <div class="model-catalog-head"><span>Get a better model</span><span>download, then upload here</span></div>
+      ${entries.map((entry) => `
+        <div class="model-catalog-row">
+          <div class="model-catalog-text">
+            <strong>${escapeHTML(entry.name)}</strong>
+            <span>${escapeHTML([entry.parameters, entry.quantization, displaySize(entry.bytes), entry.license].filter(Boolean).join(' · '))}</span>
+            ${entry.note ? `<em>${escapeHTML(entry.note)}</em>` : ''}
+          </div>
+          ${entry.download ? `<a class="model-catalog-link" href="${escapeHTML(entry.download)}" target="_blank" rel="noopener noreferrer">Download .gguf ↗</a>` : ''}
+        </div>`).join('')}
+    </div>`;
 }
 
 function modelScreenMarkup() {
   return `
     <p><strong>Running now:</strong> ${escapeHTML(modelReady ? describeModel() : 'no model loaded')} — llama.cpp compiled to WebAssembly, executing on this device.</p>
-    <p><strong>Choose a model.</strong> The bundled model ships with this site. Anything you upload is stored in this browser, listed here, and offered on the start screen from then on.</p>
+    <p><strong>Choose a model.</strong> Pick one and it loads in place; the page does not reload. Anything you upload is stored in this browser, listed here, and offered on the start screen from then on.</p>
     ${modelListMarkup({ manage: true })}
+    <p class="model-switch-status" id="modelSwitchStatus" role="status" aria-live="polite"></p>
     <div class="source-actions">
       <button class="modal-secondary" id="modelUpload">Upload a .gguf</button>
       <button class="modal-secondary" id="modelRefresh">Rescan</button>
+      ${hiddenModels.length ? `<button class="modal-secondary" id="modelRestore">Restore ${hiddenModels.length} hidden model${hiddenModels.length === 1 ? '' : 's'}</button>` : ''}
     </div>
     <p class="model-storage-line" id="modelStorage">Models are stored on this device only.</p>
-    <p><strong>Uploaded models</strong> <span id="uploadCount">none uploaded</span></p>
-    <p class="model-tip"><strong>Building websites?</strong> <code>Qwen2.5-Coder 1.5B</code> is the best fit that still runs comfortably in a tab — <code>python3 tools/fetch_model.py --preset qwen-coder-1.5b</code>, or download its <code>.gguf</code> and upload it here. <code>Qwen3 4B Instruct</code> writes better code but needs about 2.5 GB of browser memory.</p>
-    <p><strong>Upgrade without uploading:</strong> run <code>python3 tools/fetch_model.py --preset qwen-0.5b</code> and add the file to <code>models/manifest.json</code>. Larger models answer better, slower.</p>
+    <p class="model-tip"><strong>Building websites?</strong> Start with <code>Qwen2.5-Coder 1.5B</code> (about 1.1 GB): download it below, then upload it here. <code>Qwen3 4B Instruct</code> writes better code but needs about 2.5 GB of browser memory.</p>
+    ${catalogMarkup()}
+    <p><strong>Deleting:</strong> an uploaded model is deleted from this browser (its storage is freed). A model served from <code>models/</code> can only be hidden from this list, because the file belongs to the site; <strong>Rescan</strong> and <strong>Restore</strong> bring hidden ones back.</p>
     <p><strong>Knowledge library:</strong> ${libraryDocuments.length} documents across ${new Set(libraryDocuments.map((doc) => doc.categoryLabel)).size} topics, indexed in your browser.<br>
     <strong>Your files:</strong> ${userDocuments.length} imported document${userDocuments.length === 1 ? '' : 's'} in IndexedDB.<br>
     <strong>Chats:</strong> ${conversations.filter((chat) => chat.records.length).length} saved in this browser.</p>
@@ -1663,6 +1795,7 @@ function openModal(kind = 'privacy', category = null) {
   elements.modalTitle.textContent = header[1];
 
   if (kind === 'settings' || kind === 'models') {
+    if (!chosenModelId) chosenModelId = activeModel()?.id || null;
     elements.modalCopy.innerHTML = modelScreenMarkup();
   } else if (kind === 'library') {
     const groups = new Map();
@@ -1716,7 +1849,34 @@ function openModal(kind = 'privacy', category = null) {
     refreshModels.disabled = true;
     await readModelManifest();
     openModal(kind, category);
-    showToast('Model list refreshed.');
+    showToast(hiddenModels.length
+      ? `Model list refreshed · ${hiddenModels.length} hidden model${hiddenModels.length === 1 ? '' : 's'} still hidden`
+      : 'Model list refreshed.');
+  });
+
+  const restoreModels = $('#modelRestore');
+  if (restoreModels) restoreModels.addEventListener('click', async () => {
+    restoreModels.disabled = true;
+    await unhideModels();
+    openModal(kind, category);
+    showToast('Hidden models restored.');
+  });
+
+  // Pick a model: loads in place, no page reload.
+  elements.modalCopy.querySelectorAll('[data-use-model]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const id = button.dataset.useModel;
+      const entry = visibleModels().find((model) => model.id === id);
+      if (!entry) return;
+      const status = $('#modelSwitchStatus');
+      elements.modalCopy.querySelectorAll('[data-use-model], [data-remove-model]').forEach((node) => { node.disabled = true; });
+      if (status) status.textContent = `Loading ${entry.name} (${displaySize(entry.bytes)})… this can take a few seconds.`;
+      button.textContent = 'Loading…';
+      const ok = await switchModel(id);
+      openModal(kind, category);
+      const after = $('#modelSwitchStatus');
+      if (after) after.textContent = ok ? `${entry.name} is ready.` : `${entry.name} could not start here; reload the page and try again.`;
+    });
   });
 
   storageQuota().then((estimate) => {
@@ -1732,15 +1892,26 @@ function openModal(kind = 'privacy', category = null) {
       event.stopPropagation();
       const id = button.dataset.removeModel;
       const entry = (modelManifest?.available || []).find((model) => model.id === id);
-      if (!window.confirm(`Remove ${entry?.name || 'this model'} from this browser?${id === chosenModelId ? ' It is the selected model, so Mox will fall back to the bundled one.' : ''}`)) return;
-      await deleteUploadedModel(id);
-      if (id === chosenModelId) {
-        chosenModelId = null;
-        await writeMeta('modelChoice', null);
+      const name = entry?.name || 'this model';
+      const selected = id === chosenModelId;
+
+      if (entry?.uploaded) {
+        if (!window.confirm(`Delete ${name} from this browser? The file is removed and its storage is freed.${selected ? ' It is loaded right now, so Mox will stop until you pick another model.' : ''}`)) return;
+        await deleteUploadedModel(id);
+        hiddenModels = hiddenModels.filter((hidden) => hidden !== id);
+        await writeMeta('hiddenModels', hiddenModels);
+        if (selected) chosenModelId = null;
+        await writeMeta('modelChoice', chosenModelId);
+        if (selected) unloadEngine('That model was deleted.');
+      } else {
+        if (!window.confirm(`Remove ${name} from the model list? The file stays in models/ on the site, so Restore can bring it back.${selected ? ' It is selected, so Mox will switch to the next available model.' : ''}`)) return;
+        await hideModel(id);
+        if (selected) unloadEngine('That model was removed from the list.');
       }
+
       await readModelManifest();
       openModal(kind, category);
-      showToast('Model removed from this browser.');
+      showToast(entry?.uploaded ? 'Model deleted from this browser.' : 'Model removed from the list.');
     });
   });
 
@@ -1757,17 +1928,6 @@ function openModal(kind = 'privacy', category = null) {
     closeModal();
     resetChat();
     showToast('All chats deleted.');
-  });
-  elements.modalCopy.querySelectorAll('[data-model]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      const id = button.dataset.model;
-      if (id === chosenModelId) return;
-      chosenModelId = id;
-      await writeMeta('modelChoice', id);
-      closeModal();
-      showToast('Reloading with the selected model…');
-      location.reload();
-    });
   });
 }
 
@@ -1951,6 +2111,7 @@ async function loadModelFile(file) {
     elements.load.disabled = true;
     setModelStatus('ready', `${loadedModel.name} ready`);
     setSourceBadge('local', '◈ your model');
+    updateModelMenu();
     updateComposer();
     showToast(`${file.name} loaded. Ask away.`);
   } catch (error) {
@@ -1995,6 +2156,8 @@ async function loadModelFile(file) {
       elements.libraryToggle.checked = false;
     }
     chosenModelId = await readMeta('modelChoice');
+    const savedHidden = await readMeta('hiddenModels');
+    if (Array.isArray(savedHidden)) hiddenModels = savedHidden.filter((id) => typeof id === 'string');
     renderSources();
     if (await restoreChats()) {
       renderChatList();
@@ -2047,8 +2210,14 @@ window.__mox = {
   openWorkspace, openWorkspaceWithCode, finalizeAnswer, codeBundleFromText, pureCalculation,
   models: {
     list: () => modelManifest?.available || [],
+    visible: visibleModels,
+    hidden: () => [...hiddenModels],
+    catalog: () => modelManifest?.catalog || [],
     reload: readModelManifest,
-    uploaded: listUploadedModels
+    uploaded: listUploadedModels,
+    hide: hideModel,
+    restore: unhideModels,
+    switch: switchModel
   },
   state: () => ({
     modelReady, searchOnly, libraryEnabled, generating,

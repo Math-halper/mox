@@ -173,19 +173,57 @@ window.__mox.workspace.close();
 /* ------------------------------------------------------------ model upload */
 const { saveUploadedModel } = await import(path.join(ROOT, 'model-store.js'));
 const uploadBlob = new Blob([new Uint8Array([0x47, 0x47, 0x55, 0x46, 3, 0, 0, 0])], { type: 'application/octet-stream' });
-uploadBlob.name = 'qwen2.5-0.5b-instruct-q4_k_m.gguf';
+uploadBlob.name = 'qwen2.5-coder-1.5b-instruct-q4_k_m.gguf';
 const uploaded = await saveUploadedModel(uploadBlob);
+const secondBlob = new Blob([new Uint8Array([0x47, 0x47, 0x55, 0x46, 3, 0, 0, 0])], { type: 'application/octet-stream' });
+secondBlob.name = 'Qwen3-4B-Instruct-2507-Q4_K_M.gguf';
+const second = await saveUploadedModel(secondBlob);
 await window.__mox.models.reload();
 const listed = window.__mox.models.list();
 check('models: uploaded model joins the picker', listed.some((entry) => entry.id === uploaded.id && entry.uploaded));
-check('models: upload is named and measured', listed.find((entry) => entry.id === uploaded.id)?.name === 'Qwen2.5 0.5B Instruct');
+check('models: upload is named and measured', listed.find((entry) => entry.id === uploaded.id)?.name === 'Qwen2.5 Coder 1.5B Instruct', listed.find((entry) => entry.id === uploaded.id)?.name);
 window.__mox.openModal('models');
 await wait(60);
-check('models: uploaded model appears on the screen', document.querySelector('#modalCopy').textContent.includes('Qwen2.5 0.5B Instruct'));
+check('models: uploaded model appears on the screen', document.querySelector('#modalCopy').textContent.includes('Qwen2.5 Coder 1.5B Instruct'));
 check('models: uploaded model is marked as yours', document.querySelector('#modalCopy').textContent.includes('your upload'));
 check('models: uploaded model can be removed', Boolean(document.querySelector('[data-remove-model]')));
 check('models: recommends a website-building model', /Qwen2\.5-Coder 1\.5B/.test(document.querySelector('#modalCopy').textContent));
-document.querySelector('#modalDone').dispatchEvent(new window.Event('click', { bubbles: true }));
+
+/* select from the model screen */
+const useButtons = [...document.querySelectorAll('[data-use-model]')];
+check('models: every listed model has a select button', useButtons.length >= 2, String(useButtons.length));
+check('models: the selected model is marked', [...document.querySelectorAll('.model-use')].some((button) => /Selected|In use/.test(button.textContent)));
+const otherUse = useButtons.find((button) => !button.disabled);
+check('models: another model can be chosen', Boolean(otherUse) && /Use this model/.test(otherUse.textContent), otherUse?.textContent);
+check('models: switching does not reload the page', !/location\.reload/.test(await readFile(path.join(ROOT, 'app.js'), 'utf8').then((text) => text.split('async function switchModel')[1] || '')));
+
+/* delete an uploaded model from the list */
+window.confirm = () => true;
+const beforeDelete = window.__mox.models.list().length;
+document.querySelector(`[data-remove-model="${second.id}"]`).dispatchEvent(new window.Event('click', { bubbles: true }));
+await wait(200);
+check('models: delete removes it from the list', !window.__mox.models.list().some((entry) => entry.id === second.id));
+check('models: delete frees the browser copy', (await import(path.join(ROOT, 'model-store.js'))).listUploadedModels().then((rows) => !rows.some((row) => row.id === second.uploadId)));
+check('models: deleting keeps the other models', window.__mox.models.list().length === beforeDelete - 1);
+check('models: deleting re-renders the screen without it', !document.querySelector(`[data-use-model="${second.id}"]`));
+document.querySelector('#modalDone')?.dispatchEvent(new window.Event('click', { bubbles: true }));
+
+/* hide + restore (what a served model allows, since its file is not ours) */
+await window.__mox.models.hide(uploaded.id);
+check('models: hidden model leaves the list', !window.__mox.models.visible().some((entry) => entry.id === uploaded.id));
+check('models: hidden model is remembered', window.__mox.models.hidden().includes(uploaded.id));
+window.__mox.openModal('models');
+await wait(60);
+check('models: hidden models can be restored from the screen', Boolean(document.querySelector('#modelRestore')), document.querySelector('#modelRestore')?.textContent);
+document.querySelector('#modelRestore').dispatchEvent(new window.Event('click', { bubbles: true }));
+await wait(200);
+check('models: restore brings the model back', window.__mox.models.visible().some((entry) => entry.id === uploaded.id));
+check('models: restore clears the hidden list', window.__mox.models.hidden().length === 0);
+document.querySelector('#modalDone')?.dispatchEvent(new window.Event('click', { bubbles: true }));
+
+/* catalog links */
+check('models: catalog offers a download link', window.__mox.models.catalog().some((entry) => /\.gguf$/.test(entry.download || '')));
+check('models: recommended model is first in the catalog', /Qwen2\.5-Coder 1\.5B/.test(window.__mox.models.catalog()[0]?.name || ''));
 
 /* ------------------------------------------------------------------ models */
 window.__mox.openModal('models');
