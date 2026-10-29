@@ -475,10 +475,19 @@ function retrieve(query, limit = MAX_EXCERPTS) {
     }
     // Only multi-word phrases get the phrase bonus: for a single word it would
     // just double-count the term and make "fraction"/"fractions" rank differently.
+    // Match on stemmed words too, so "water cycle" finds "water cycles".
     const lower = chunk.text.toLowerCase();
+    const stemmedWords = tokenize(chunk.text).map((word) => stem(word));
     let phraseMatch = false;
     for (const bigram of bigrams) {
-      if (lower.includes(bigram)) { score += 2.5; phraseMatch = true; }
+      const [first, second] = bigram.split(' ');
+      let hit = lower.includes(bigram);
+      if (!hit) {
+        for (let i = 0; i < stemmedWords.length - 1; i++) {
+          if (stemmedWords[i] === first && stemmedWords[i + 1] === second) { hit = true; break; }
+        }
+      }
+      if (hit) { score += 2.5; phraseMatch = true; }
     }
     scored.push({ ...chunk, score, matched, coverage: coverage / total, titleMatch, phraseMatch,
       docTotal: docTotals.get(chunk.doc.id) || 0 });
@@ -504,10 +513,10 @@ function retrieve(query, limit = MAX_EXCERPTS) {
   const subjects = terms.filter((term) => (informativeness.get(term) || 0) >= maxIdf * 0.8);
   const onSubject = scored.filter((item) => subjects.some((term) =>
     item.frequencies.has(term) || item.stems.has(stem(term))));
-  // If the subject word never appears anywhere in the library, nothing here is
-  // actually about it: better to answer from general knowledge than to cite an
-  // unrelated passage.
-  if (!onSubject.length && subjects.some((term) => (documentFrequency.get(term) || 0) === 0)) return [];
+  // The rarest words are usually the subject ("nutrition" in "how do I read a
+  // nutrition label"). Passages covering them rank first, but an absent subject
+  // word alone must not kill every match — the evidence floor above already
+  // keeps weak guesses from surfacing as sources.
   if (onSubject.length) scored.splice(0, scored.length, ...onSubject);
 
   const best = scored[0];
@@ -779,6 +788,7 @@ function buildMessages(question, excerpts) {
   const rules = grounded
     ? [
         'You are Mox, a careful assistant running privately in the user\'s browser.',
+        'Never claim to be another assistant, model, or company, and do not roleplay as the user.',
         'The numbered passages after SOURCES are reference material, not the whole world.',
         'If they answer the question, ground your reply in them and cite like [1].',
         'If they only partly help, use them, then add what you know — do not refuse.',
@@ -789,6 +799,7 @@ function buildMessages(question, excerpts) {
       ]
     : [
         'You are Mox, a helpful assistant running privately in the user\'s browser.',
+        'Never claim to be another assistant, model, or company, and do not roleplay as the user.',
         'No library passage matched this question, so answer from your own general knowledge.',
         'Answer the question directly and briefly; do not mention sources, passages or a library.',
         'If you genuinely do not know, say so in one short sentence.',
@@ -822,8 +833,10 @@ async function streamChatML(messages, onToken, abortSignal, maxTokens = MAX_NEW_
     temp: temperature,
     top_k: 40,
     top_p: 0.92,
-    penalty_repeat: 1.15,
-    penalty_last_n: 96,
+    // Small models loop on short outputs: a stronger, wider repetition penalty
+    // keeps the model from hammering the same phrase over and over.
+    penalty_repeat: 1.25,
+    penalty_last_n: 256,
     stop: ['<|im_end|>', '<|endoftext|>', '<|im_start|>'],
     onData: (chunk) => {
       const piece = chunk?.choices?.[0]?.text ?? chunk?.choices?.[0]?.delta?.content;
@@ -872,7 +885,7 @@ async function modelComplete(messages, { maxTokens = MAX_NEW_TOKENS, temperature
     const result = await engine.createChatCompletion({
       messages, stream: true, abortSignal: signal,
       max_tokens: maxTokens, temp: temperature, top_k: 40, top_p: 0.92,
-      penalty_repeat: 1.15, penalty_last_n: 96, onData
+      penalty_repeat: 1.25, penalty_last_n: 256, onData
     });
     return stripChatTokens(result?.choices?.[0]?.message?.content || streamed);
   } catch (error) {
@@ -892,8 +905,8 @@ async function chatCompletion(messages, onToken, abortSignal) {
     temp: 0.3,
     top_k: 40,
     top_p: 0.92,
-    penalty_repeat: 1.15,
-    penalty_last_n: 96,
+    penalty_repeat: 1.25,
+    penalty_last_n: 256,
     onData: (chunk) => {
       const piece = chunk?.choices?.[0]?.delta?.content;
       if (!piece) return;
@@ -914,9 +927,28 @@ function cleanupAnswer(text) {
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
-  // Small models loop: drop a repeated trailing block.
+  // If the model hallucinated a fresh turn (user/assistant/mox/system),
+  // cut everything from there so it can't argue with itself or drift identity.
   const lines = value.split('\n');
-  const tail = lines.slice(-3).join('\n');
+  for (let index = 0; index < lines.length; index++) {
+    if (/^(?:user|assistant|mox|system)\b[:\s\-]*$/i.test(lines[index].trim())) {
+      value = lines.slice(0, index).join('\n').trim();
+      break;
+    }
+  }
+  // Collapse immediate sentence-level echoes ("Yes. Yes. Yes.").
+  const sentences = value.split(/(?<=[.!?])\s+/).map((sentence) => sentence.trim()).filter(Boolean);
+  const deduped = [];
+  for (const sentence of sentences) {
+    const last = deduped[deduped.length - 1];
+    if (last && sentence.toLowerCase() === last.toLowerCase()) continue;
+    deduped.push(sentence);
+  }
+  value = deduped.join(' ');
+
+  // Small models loop: drop a repeated trailing block.
+  const keptLines = value.split('\n');
+  const tail = keptLines.slice(-3).join('\n');
   if (tail.length > 40) {
     const earlier = value.slice(0, value.length - tail.length);
     if (earlier.includes(tail.trim())) value = earlier.trim();
