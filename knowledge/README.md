@@ -1,46 +1,26 @@
-# The knowledge folder
+# knowledge/ — the built-in library
 
-This folder is the library Mox reads. Every `.md` (or `.txt`, `.pdf`, `.csv`, `.json`) file here is chunked, indexed locally in your browser, and searched when you ask a question. Answers cite the file they came from.
+This folder is the reference library Mox reads. Every `.md`, `.txt`, `.pdf`, `.csv`, `.json`, `.html`, `.xml`, `.yaml`, and `.log` file here is fetched by the page, split into overlapping passages of about 800 characters, and indexed in the visitor's browser. When someone asks a question, the app scores the passages against the question's terms and places the best matches in the model's prompt as numbered sources, which answers cite as `[1]`, `[2]`, and so on.
 
-## What is in the starter library
+## Contents
 
-| Folder | Contents | Files |
-| --- | --- | --- |
-| `math/` | Arithmetic and number sense, algebra, geometry and trigonometry, calculus, probability and statistics, formula reference, functions/logs/discrete math | 7 |
-| `reading/` | Reading comprehension, grammar and punctuation, writing and style, vocabulary and word roots, literature and rhetoric, forms and close reading | 6 |
-| `technology/` | How computers work, the internet and the web, programming fundamentals, AI and machine learning, cybersecurity and privacy, data and SQL, software engineering practices, web development, **HTML reference, CSS reference, JavaScript reference, APIs/HTTP/JSON** | 12 |
-| `science/` | Physics, chemistry, biology and Earth science, astronomy and space, chemistry of reactions and materials, electricity/waves/modern physics | 6 |
-| `humanities/` | World history timeline, geography and cultures, philosophy and critical thinking, modern history 1900–today, cities/climate/maps | 5 |
-| `life/` | Health and wellbeing, money and personal finance, study skills and learning, careers and interviews, everyday law and civics, cooking and food safety | 6 |
+43 documents, roughly 39k words:
+
+| Folder | Subject | Documents |
+| --- | --- | ---: |
+| `math/` | Arithmetic, algebra, geometry, trigonometry, calculus, probability, statistics, formula reference | 7 |
+| `reading/` | Comprehension, grammar, punctuation, writing, style, vocabulary, literature, rhetoric | 6 |
+| `technology/` | Computers, the internet, the web, programming, AI, security, data and SQL, software engineering, full HTML/CSS/JavaScript/API references | 12 |
+| `science/` | Physics, chemistry, biology and Earth science, astronomy and space | 6 |
+| `humanities/` | World history, geography and cultures, philosophy, modern history | 5 |
+| `life/` | Health, personal finance, study skills, careers, law and civics, cooking and food safety | 6 |
 
 Plus the Mox starter guide at the top level.
 
-Total: 43 documents, roughly 39k words.
+## How retrieval works
 
-The four reference documents are deliberately dense: every common HTML element and
-attribute, the CSS property groups and layout systems, the JavaScript language and
-standard library plus DOM/events/web APIs, and how HTTP APIs and JSON work. They are
-retrieved like any other document, so a question about `grid-template-columns` or
-`array.reduce` lands on the reference rather than a summary.
+Each document is chunked into overlapping passages. On a question, passages are scored with IDF-weighted term matches, suffix stemming (so "fraction" finds "fractions"), a coverage bonus for answering the whole question, and a phrase bonus when consecutive question words appear together. Passages beneath a relevance floor are discarded — a weak match is worse than none, because it can lead the model to cite an irrelevant passage. When passages match, the model answers from them and may add general knowledge; when nothing matches, it answers from its own knowledge and a note under the reply says so.
 
-## Adding your own material
+## Limits
 
-Drop files into this folder (or any subfolder) and reload the page, or use **Add a folder** / **Add files** in the app to import from anywhere on your computer. To make a file part of the bundled library that loads automatically, add it to `knowledge/` and run:
-
-```sh
-python3 tools/build_knowledge_index.py
-```
-
-That regenerates `knowledge/index.json`, the manifest the app fetches on startup.
-
-## How the library is used
-
-The app splits each document into overlapping passages of about 800 characters, scores them against your question's terms (IDF-weighted term matches, suffix stemming, a coverage bonus for answering the whole question, and a bonus when consecutive words appear together), and passes the best passages to the language model as context.
-
-A relevance floor throws away weak matches, because a bad passage makes the model cite nonsense. When passages match, the model answers from them and cites them as `[1]`. When nothing matches, it answers from its own knowledge and the app says so under the reply — it is never told it has "no sources".
-
-Nothing here retrains the model. Editing a document changes what the model is shown on the next question — nothing else. Files are read in your browser; the app never uploads them.
-
-## Formats and limits
-
-PDF, TXT, Markdown, CSV, JSON, HTML, XML, YAML, and LOG. Files over 12 MB are skipped. Very large PDFs can be slow to parse on first import.
+Editing a document changes what the model is shown on the next question — nothing else. Nothing here retrains the model. Files are read in the browser and are never uploaded. Files over 12 MB are skipped, and very large PDFs can be slow to parse on first import.
