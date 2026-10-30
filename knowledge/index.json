@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "generated": "2026-10-30T21:16:06Z",
+  "generated": "2026-10-30T21:23:40Z",
   "categories": [
     {
       "id": "math",
@@ -169,8 +169,8 @@
       "path": "mox-starter-guide.md",
       "title": "About this workspace",
       "category": "",
-      "bytes": 7577,
-      "words": 1260
+      "bytes": 8407,
+      "words": 1406
     },
     {
       "path": "reading/grammar-and-punctuation.md",
@@ -299,6 +299,20 @@
       "words": 1167
     },
     {
+      "path": "technology/desktop-shell-in-the-browser.md",
+      "title": "Building a desktop environment in the browser",
+      "category": "technology",
+      "bytes": 9001,
+      "words": 1455
+    },
+    {
+      "path": "technology/git-and-github-automation.md",
+      "title": "Git and GitHub automation done safely",
+      "category": "technology",
+      "bytes": 5951,
+      "words": 976
+    },
+    {
       "path": "technology/how-computers-work.md",
       "title": "How computers work",
       "category": "technology",
@@ -325,6 +339,13 @@
       "category": "technology",
       "bytes": 26891,
       "words": 3415
+    },
+    {
+      "path": "technology/local-ai-agents-and-tools.md",
+      "title": "Running a language model locally, and letting it use tools",
+      "category": "technology",
+      "bytes": 7357,
+      "words": 1137
     },
     {
       "path": "technology/popular-websites.md",

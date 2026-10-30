@@ -135,7 +135,27 @@ const QUERY_ALIASES = {
   philosophy: ['ethics', 'argument', 'logic', 'reasoning'],
   ethics: ['morality', 'philosophy', 'right'],
   logic: ['reasoning', 'argument', 'fallacy'],
-  bias: ['fallacy', 'thinking', 'reasoning']
+  bias: ['fallacy', 'thinking', 'reasoning'],
+  agent: ['tool', 'model', 'loop', 'automation'],
+  agents: ['tool', 'model', 'loop', 'automation'],
+  tool: ['tools', 'function', 'agent'],
+  tools: ['tool', 'agent', 'function'],
+  ollama: ['local model', 'gguf', 'model server'],
+  gguf: ['model file', 'quantized', 'llama'],
+  llama: ['gguf', 'model server', 'quantized'],
+  python: ['script', 'programming', 'code'],
+  javascript: ['browser', 'code', 'dom'],
+  desktop: ['window', 'shell', 'browser', 'icons'],
+  filesystem: ['files', 'paths', 'storage', 'directories'],
+  storage: ['files', 'database', 'browser', 'memory'],
+  window: ['desktop', 'browser', 'layout'],
+  git: ['version control', 'commit', 'branch', 'github'],
+  github: ['git', 'repository', 'pull request'],
+  repo: ['repository', 'git', 'project'],
+  token: ['password', 'security', 'authentication'],
+  search: ['index', 'query', 'find'],
+  audio: ['sound', 'playback', 'browser'],
+  video: ['media', 'playback', 'player']
 };
 
 const STOP_WORDS = new Set(
@@ -969,7 +989,17 @@ function buildMessages(question, excerpts) {
     ...(usesWorkspace ? ['', WORKSPACE_TOOL_INSTRUCTIONS, '', 'FILE CONTENTS:', workspaceContext(5000)] : [])
   ].join('\n');
 
+  // Tone is shared by both branches: warm and human in manner, honest in fact.
+  const voice = [
+    'Sound like a thoughtful friend who happens to know a lot, not a manual: warm, plain, first person, no corporate throat-clearing.',
+    'If someone sounds worried, tired, upset or stuck, name it in one short sentence before you help, then actually help. Never lecture them about their feelings.',
+    'Match their energy: one line in return for a one-line message, more depth only when the problem is hard. Ask a question only when the answer really changes your advice.',
+    'Be encouraging without flattery, and never make someone feel slow for asking.',
+    'Do not keep announcing that you are software, but never claim to be a human being: no body, no childhood, no invented memories, no feelings stated as facts. If asked directly, say what you are in one plain sentence and carry on helping.'
+  ];
+
   const common = [
+    ...voice,
     'For any arithmetic, write <calc>expression</calc> and the app will compute it exactly — never guess a number.',
     'Code is welcome when it helps: a fenced block with the language name works, and the app can preview it.',
     'To draw something, write <draw>a short description</draw> on its own line; the app turns it into real SVG. Never hand-write SVG markup yourself.'

@@ -290,6 +290,14 @@ check('prompt: ungrounded answers from general knowledge', /own general knowledg
 check('prompt: ungrounded forbids citing sources', /do not mention sources/.test(bareSystem));
 check('prompt: marks the empty source block', bareSystem.includes('no library passage matched this question'));
 
+/* ------------------------------------------------------------ voice + drawings */
+check('prompt: warm, person-first tone', /thoughtful friend/i.test(groundedSystem) && /warm/i.test(bareSystem));
+check('prompt: responds to how someone feels', /worried, tired, upset or stuck/i.test(bareSystem));
+check('prompt: no flattery or shaming', /never make someone feel slow/i.test(groundedSystem));
+check('prompt: never claims to be human', /never claim to be a human being/i.test(groundedSystem) && !/you are (?:a )?human/i.test(groundedSystem));
+check('prompt: does not keep announcing it is software', /do not keep announcing/i.test(bareSystem));
+check('prompt: drawings go through <draw>, not hand-written SVG', /<draw>/i.test(bareSystem) && /Never hand-write SVG/i.test(groundedSystem));
+
 /* ------------------------------------------------------- exact arithmetic */
 check('arithmetic: a plain sum is recognised', window.__mox.pureCalculation('what is 1234 * 5678?')?.value === 7006652);
 check('arithmetic: percentages are recognised', window.__mox.pureCalculation('what is 15% of 80')?.value === 12);
