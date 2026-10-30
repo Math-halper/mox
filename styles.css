@@ -561,6 +561,50 @@ button { font-family: inherit; color: inherit; }
 .md-list { margin: 8px 0; padding-left: 22px; }
 .md-list li { margin: 3px 0; }
 
+/* Drawings: an SVG figure card in an answer, with its own actions. */
+.md-figure {
+  margin: 12px 0; border: 1px solid #ffffff40; border-radius: 12px;
+  background: #0a0a0a; overflow: hidden; max-width: 100%;
+}
+.md-figure-canvas { display: grid; place-items: center; padding: 4px; }
+.md-figure-canvas svg { width: 100%; height: auto; max-width: 420px; display: block; border-radius: 8px; }
+.md-figure-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  flex-wrap: wrap; padding: 8px 10px; border-top: 1px solid #ffffff26; background: #000000;
+}
+.md-figure-label {
+  font-size: 9.5px; letter-spacing: .6px; text-transform: uppercase;
+  font-weight: 700; color: var(--dim);
+}
+.md-figure-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.md-figure-action {
+  border: 1px solid #ffffff40; border-radius: 999px; background: transparent;
+  color: var(--ink); font: inherit; font-size: 12px; padding: 4px 11px; cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.md-figure-action:hover { background: #ffffff; border-color: #ffffff; color: #000000; }
+
+/* Drawing picker (the "Draw something" screen). */
+.draw-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.draw-chip {
+  border: 1px solid #ffffff40; border-radius: 999px; background: transparent;
+  color: var(--ink); font: inherit; font-size: 12.5px; padding: 5px 12px; cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.draw-chip:hover { background: #ffffff; border-color: #ffffff; color: #000000; }
+.draw-sub { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--dim); margin: 16px 0 0; }
+.draw-form { display: flex; gap: 8px; margin: 16px 0 4px; }
+.draw-input {
+  flex: 1 1 auto; min-width: 0; background: #000000; color: var(--ink);
+  border: 1px solid #ffffff40; border-radius: 10px; padding: 9px 12px; font: inherit; font-size: 13.5px;
+}
+.draw-input:focus-visible { outline: 2px solid #ffffff; outline-offset: 1px; }
+.draw-send {
+  flex: 0 0 auto; border: 0; border-radius: 10px; background: #ffffff; color: #000000;
+  font: inherit; font-weight: 600; font-size: 13.5px; padding: 9px 16px; cursor: pointer;
+}
+.draw-send:hover { background: #d8d8d8; }
+
 /* Actions sit inside the white question bubble, so they invert there. */
 .message.user .msg-action { color: #000000; }
 .message.user .msg-action:hover { background: #000000; color: #ffffff; border-color: #000000; }

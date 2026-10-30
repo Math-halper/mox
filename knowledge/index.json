@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "generated": "2026-10-28T21:08:22Z",
+  "generated": "2026-10-30T21:16:06Z",
   "categories": [
     {
       "id": "math",
@@ -169,8 +169,8 @@
       "path": "mox-starter-guide.md",
       "title": "About this workspace",
       "category": "",
-      "bytes": 7243,
-      "words": 1173
+      "bytes": 7577,
+      "words": 1260
     },
     {
       "path": "reading/grammar-and-punctuation.md",
@@ -292,6 +292,13 @@
       "words": 585
     },
     {
+      "path": "technology/data-visualization.md",
+      "title": "Charts, diagrams, and data visualization",
+      "category": "technology",
+      "bytes": 6469,
+      "words": 1167
+    },
+    {
       "path": "technology/how-computers-work.md",
       "title": "How computers work",
       "category": "technology",
@@ -320,6 +327,13 @@
       "words": 3415
     },
     {
+      "path": "technology/popular-websites.md",
+      "title": "Popular websites and online services",
+      "category": "technology",
+      "bytes": 13253,
+      "words": 2021
+    },
+    {
       "path": "technology/programming-fundamentals.md",
       "title": "Programming fundamentals",
       "category": "technology",
@@ -332,6 +346,13 @@
       "category": "technology",
       "bytes": 5655,
       "words": 915
+    },
+    {
+      "path": "technology/svg-and-vector-graphics.md",
+      "title": "SVG and vector graphics",
+      "category": "technology",
+      "bytes": 8439,
+      "words": 1397
     },
     {
       "path": "technology/web-development-html-css-js.md",
