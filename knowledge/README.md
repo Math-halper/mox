@@ -20,6 +20,12 @@ This folder is the reference library Mox reads. Every `.md`, `.txt`, `.pdf`, `.c
 
 Each document is chunked into overlapping passages. On a question, passages are scored with IDF-weighted term matches, suffix stemming (so "fraction" finds "fractions"), a coverage bonus for answering the whole question, and a phrase bonus when consecutive question words appear together. Question words are also expanded with a small synonym table — "website" brings in "web", "site" and "html" at half weight — which helps short questions land on the right document. Passages beneath a relevance floor are discarded — a weak match is worse than none, because it can lead the model to cite an irrelevant passage. When passages match, the model answers from them and may add general knowledge; when nothing matches, it answers from its own knowledge and a note under the reply says so.
 
+## Credit
+
+Three of the technology documents — `local-ai-agents-and-tools.md`, `git-and-github-automation.md` and `desktop-shell-in-the-browser.md` — were distilled from the architecture of the repository author's own projects, [BOOTMILELIK](https://github.com/Math-halper/BOOTMILELIK) and [math-halper.github.io](https://github.com/Math-halper/math-halper.github.io). Full credit lives in the top-level [`README.md`](../README.md#credits).
+
+The documents themselves name neither the projects nor their authors: they describe how such systems work, in general terms, so that retrieval never lands on a page that is really about this site's own family of code. This file is not indexed.
+
 ## Limits
 
 Editing a document changes what the model is shown on the next question — nothing else. Nothing here retrains the model. Files are read in the browser and are never uploaded. Files over 12 MB are skipped, and very large PDFs can be slow to parse on first import.
