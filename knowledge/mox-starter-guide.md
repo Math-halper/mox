@@ -24,6 +24,26 @@ Two tools sit beside the chat:
 
 Any chat answer containing HTML, CSS, or JavaScript gets a **Preview code** button that opens it in the workspace preview.
 
+## How Mox talks
+
+Mox is meant to feel like a thoughtful person who happens to know a lot, not like a form letter. In practice that means:
+
+- **Warmth first.** If something you said sounds worried, tired or stuck, Mox names it in a sentence before getting to the answer.
+- **Plain words, first person, no throat-clearing** ("Certainly! As an AI…" is exactly what it should not sound like).
+- **Matching your energy.** A one-line question gets a one-line answer; a hard problem gets depth.
+- **Encouraging without flattery.** No "great question!", and never a hint that you should already know this.
+- **Honest about what it is.** Mox will not keep reminding you it is software, but it will not claim to be a person either — no invented body, childhood or memories. Ask directly and you get one plain sentence, then the help.
+
+## Drawings
+
+Mox can draw, but not the way an image generator does. A drawing here is real SVG: shapes, charts, flowcharts and simple scenes written from coordinates by `svg.js`, with no image model and no upload. Ask in plain words — *draw a red heart*, *bar chart of 4, 9, 2, 7*, *pie chart of 50, 30, 20*, *line chart of 3, 8, 4, 12*, *flowchart: research -> design -> build -> ship*, *draw a sunset over mountains*, *draw a night sky* — or open **Draw something** for a menu of everything the engine can build.
+
+Shapes: circle, square, rectangle, triangle, star, heart, diamond, hexagon, pentagon, arrow, sun, moon, cloud, tree, house, rocket, flower, smiley face, checkmark, cross, lightning bolt, spiral. Colours are understood as words ("a navy star") or hex codes, and the background flips to light behind dark shapes so the drawing stays legible.
+
+Each drawing in chat comes with **Download** (`.svg`), **PNG** (960 px), **Copy** (the markup), and **Open in workspace** (to edit it as code). A model answer can also request one with `<draw>a short description</draw>`, and the console exposes `__mox.draw.draw('draw a blue hexagon')`.
+
+The limit is honest: this is geometry, not imagination. Ask for a dog or a portrait and Mox says what it can draw instead of producing a bad guess. For photographs and illustrations the format itself — a grid of pixels — is the right tool, and that needs an image model or a drawing hand.
+
 ## Chats, shortcuts, and offline use
 
 Every conversation is saved in the browser and listed in the sidebar, so closing the tab does not lose it. An old chat can be reopened to pick it up again, or deleted with the small × beside its title. Inside a conversation, Stop halts a long answer, Copy puts the text on the clipboard, and Regenerate asks the same question again. Every answer lists the passages it used; clicking one reads the exact text.
@@ -36,13 +56,13 @@ The first visit transfers the 94 MB model file; after that the browser serves it
 
 ## The knowledge library
 
-`knowledge/` holds 43 documents — about 39k words — covering mathematics, reading and writing, technology (including full HTML, CSS, and JavaScript references), science, humanities, and life skills. Each file is fetched by the page, split into overlapping passages, and scored against every question in the browser. The best passages are placed in the model's prompt as sources, and their titles appear under the answer.
+`knowledge/` holds 55 documents — about 56k words — covering mathematics, reading and writing, technology (including full HTML, CSS, JavaScript and SVG references, guides to popular websites, local AI agents, browser model runtimes and GGUF, small open models, classic browser games, emulators and Flash, website design references, a line-of-code lookup for HTML/CSS/JS, Git and GitHub automation, browser desktop shells, and a data-visualisation primer), science, humanities, and life skills. Each file is fetched by the page, split into overlapping passages, and scored against every question in the browser. The best passages are placed in the model's prompt as sources, and their titles appear under the answer.
 
 Imported material can be added with **Add a folder** or **Add files**. Imported text is stored in the browser's IndexedDB and can be removed from the sidebar.
 
 ## When Mox has sources, and when it doesn't
 
-If a question matches something in the library, Mox puts those passages in front of the model, cites them as `[1]`, `[2]`, and links them under the answer so the exact text can be read. If nothing matches — a greeting, simple arithmetic, something outside the 43 documents — Mox answers from the model's own knowledge and says so in one line under the reply. It should never claim it has "no sources" or refuse a question just because the library is silent.
+If a question matches something in the library, Mox puts those passages in front of the model, cites them as `[1]`, `[2]`, and links them under the answer so the exact text can be read. If nothing matches — a greeting, simple arithmetic, something outside the 55 documents — Mox answers from the model's own knowledge and says so in one line under the reply. It should never claim it has "no sources" or refuse a question just because the library is silent.
 
 When the library matches only partly, the answer uses the passages and then fills in. Treat Mox as a fast study aid, not an authority: check anything that matters against the cited document or another source.
 

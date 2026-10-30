@@ -12,6 +12,10 @@ import {
 import {
   listUploadedModels, saveUploadedModel, getUploadedModel, deleteUploadedModel, storageQuota
 } from './model-store.js';
+import {
+  drawingIntent, drawingAnswer, drawSVG, resolveDrawTags, hydrateSVGFigures, svgAPI,
+  DRAWABLE, DRAW_EXAMPLES
+} from './svg.js';
 
 const WLLAMA_URL = new URL('vendor/wllama/wllama.js', import.meta.url).href;
 const WLLAMA_WASM = new URL('vendor/wllama/wllama.wasm', import.meta.url).href;
@@ -31,6 +35,128 @@ const HISTORY_TURNS = 6;          // how many past messages the model sees
 const CHAT_META_KEY = 'conversations';
 const CHAT_LIMIT = 30;            // conversations kept in browser storage
 const SAVED_TEXT_LIMIT = 6000;    // characters per saved message
+
+// Question words that mean the same thing in the library's vocabulary. A match
+// on one of these counts at half weight: it widens recall without letting a
+// synonym outrank the word the person actually typed.
+const QUERY_ALIASES = {
+  website: ['web', 'site', 'html', 'browser'],
+  websites: ['web', 'site', 'browser'],
+  site: ['website', 'web', 'page'],
+  internet: ['network', 'web', 'online', 'http'],
+  online: ['internet', 'web'],
+  browser: ['web', 'html', 'javascript'],
+  webpage: ['html', 'web', 'site'],
+  app: ['application', 'software', 'programming'],
+  code: ['programming', 'program', 'source'],
+  coding: ['programming', 'code'],
+  bug: ['debug', 'error', 'testing'],
+  api: ['http', 'json', 'request', 'endpoint'],
+  database: ['sql', 'table', 'query', 'storage'],
+  data: ['statistics', 'dataset', 'chart'],
+  chart: ['graph', 'plot', 'visualization', 'data'],
+  graph: ['chart', 'plot', 'visualization'],
+  drawing: ['svg', 'vector', 'art', 'illustration'],
+  draw: ['svg', 'vector', 'illustration'],
+  image: ['picture', 'svg', 'graphics', 'photo'],
+  logo: ['svg', 'vector', 'design', 'icon'],
+  icon: ['svg', 'symbol', 'vector'],
+  design: ['layout', 'css', 'typography', 'color'],
+  colour: ['color', 'palette', 'contrast'],
+  color: ['colour', 'palette', 'contrast'],
+  font: ['typography', 'text', 'typeface'],
+  responsive: ['layout', 'mobile', 'css', 'media'],
+  ai: ['machine learning', 'model', 'neural'],
+  llm: ['language model', 'ai', 'transformer'],
+  model: ['machine learning', 'neural', 'training'],
+  computer: ['hardware', 'cpu', 'memory', 'software'],
+  laptop: ['computer', 'hardware', 'battery'],
+  phone: ['mobile', 'android', 'ios'],
+  security: ['password', 'encryption', 'phishing', 'privacy'],
+  privacy: ['security', 'tracking', 'data'],
+  password: ['security', 'login', 'authentication'],
+  scam: ['phishing', 'fraud', 'security'],
+  money: ['finance', 'budget', 'saving', 'interest'],
+  finance: ['money', 'budget', 'investing', 'loan'],
+  debt: ['loan', 'interest', 'credit'],
+  salary: ['income', 'job', 'pay', 'career'],
+  job: ['career', 'interview', 'resume', 'work'],
+  interview: ['job', 'career', 'hiring'],
+  resume: ['job', 'cv', 'career'],
+  study: ['learning', 'memory', 'revision', 'exam'],
+  learn: ['study', 'learning', 'practice'],
+  exam: ['test', 'study', 'revision'],
+  memorise: ['memory', 'study', 'recall'],
+  write: ['writing', 'essay', 'draft', 'grammar'],
+  writing: ['essay', 'grammar', 'style', 'draft'],
+  essay: ['writing', 'argument', 'thesis', 'paragraph'],
+  grammar: ['punctuation', 'sentence', 'writing'],
+  book: ['literature', 'novel', 'reading'],
+  poem: ['poetry', 'literature', 'metre', 'rhyme'],
+  meaning: ['definition', 'vocabulary', 'word'],
+  word: ['vocabulary', 'etymology', 'definition'],
+  health: ['nutrition', 'exercise', 'sleep', 'wellbeing'],
+  sick: ['illness', 'symptom', 'health', 'fever'],
+  food: ['cooking', 'nutrition', 'recipe', 'safety'],
+  cook: ['recipe', 'cooking', 'food', 'oven'],
+  exercise: ['fitness', 'health', 'training'],
+  sleep: ['health', 'rest', 'wellbeing'],
+  climate: ['weather', 'atmosphere', 'temperature', 'carbon'],
+  weather: ['climate', 'atmosphere', 'storm'],
+  energy: ['power', 'electricity', 'physics'],
+  electricity: ['circuit', 'voltage', 'current', 'energy'],
+  atom: ['chemistry', 'electron', 'molecule'],
+  cell: ['biology', 'dna', 'organelle'],
+  dna: ['genetics', 'biology', 'gene'],
+  space: ['astronomy', 'planet', 'star', 'orbit'],
+  planet: ['space', 'astronomy', 'orbit'],
+  star: ['astronomy', 'space', 'sun'],
+  earth: ['geology', 'planet', 'climate'],
+  history: ['historical', 'century', 'war', 'timeline'],
+  war: ['history', 'conflict', 'battle'],
+  government: ['politics', 'law', 'civics', 'election'],
+  law: ['legal', 'rights', 'civics', 'court'],
+  geography: ['country', 'map', 'climate', 'region'],
+  country: ['nation', 'geography', 'capital'],
+  math: ['mathematics', 'arithmetic', 'algebra'],
+  maths: ['mathematics', 'arithmetic', 'algebra'],
+  percent: ['percentage', 'proportion', 'fraction'],
+  percentage: ['percent', 'proportion', 'fraction'],
+  average: ['mean', 'median', 'statistics'],
+  chance: ['probability', 'odds', 'random'],
+  odds: ['probability', 'chance'],
+  slope: ['gradient', 'derivative', 'rate'],
+  area: ['geometry', 'square', 'region'],
+  volume: ['geometry', 'capacity', 'litre'],
+  speed: ['velocity', 'rate', 'distance'],
+  force: ['newton', 'physics', 'motion'],
+  light: ['optics', 'wave', 'photon'],
+  sound: ['wave', 'frequency', 'decibel'],
+  philosophy: ['ethics', 'argument', 'logic', 'reasoning'],
+  ethics: ['morality', 'philosophy', 'right'],
+  logic: ['reasoning', 'argument', 'fallacy'],
+  bias: ['fallacy', 'thinking', 'reasoning'],
+  agent: ['tool', 'model', 'loop', 'automation'],
+  agents: ['tool', 'model', 'loop', 'automation'],
+  tool: ['tools', 'function', 'agent'],
+  tools: ['tool', 'agent', 'function'],
+  ollama: ['local model', 'gguf', 'model server'],
+  gguf: ['model file', 'quantized', 'llama'],
+  llama: ['gguf', 'model server', 'quantized'],
+  python: ['script', 'programming', 'code'],
+  javascript: ['browser', 'code', 'dom'],
+  desktop: ['window', 'shell', 'browser', 'icons'],
+  filesystem: ['files', 'paths', 'storage', 'directories'],
+  storage: ['files', 'database', 'browser', 'memory'],
+  window: ['desktop', 'browser', 'layout'],
+  git: ['version control', 'commit', 'branch', 'github'],
+  github: ['git', 'repository', 'pull request'],
+  repo: ['repository', 'git', 'project'],
+  token: ['password', 'security', 'authentication'],
+  search: ['index', 'query', 'find'],
+  audio: ['sound', 'playback', 'browser'],
+  video: ['media', 'playback', 'player']
+};
 
 const STOP_WORDS = new Set(
   ('a an the and or but if then else when where why how what who whom which this that these those is are was were be been ' +
@@ -206,6 +332,7 @@ function renderRich(text) {
   const lines = escapeHTML(text).split('\n');
   const out = [];
   let fence = null;
+  let fenceLang = '';
   let list = null;             // 'ul' | 'ol'
   const closeList = () => { if (list) { out.push(`</${list}>`); list = null; } };
 
@@ -214,10 +341,12 @@ function renderRich(text) {
       if (fence === null) {
         closeList();
         fence = [];
+        fenceLang = line.replace(/^\s*```\s*/, '').split(/\s+/)[0].toLowerCase();
         continue;
       }
-      out.push(`<pre class="md-code"><code>${fence.join('\n')}</code></pre>`);
+      out.push(`<pre class="md-code"${fenceLang ? ` data-lang="${fenceLang}"` : ''}><code>${fence.join('\n')}</code></pre>`);
       fence = null;
+      fenceLang = '';
       continue;
     }
     if (fence) { fence.push(line); continue; }
@@ -248,9 +377,48 @@ function renderRich(text) {
     closeList();
     out.push(value);
   }
-  if (fence) out.push(`<pre class="md-code"><code>${fence.join('\n')}</code></pre>`);
+  if (fence) out.push(`<pre class="md-code"${fenceLang ? ` data-lang="${fenceLang}"` : ''}><code>${fence.join('\n')}</code></pre>`);
   closeList();
   return out.join('\n');
+}
+
+// Drawing blocks (```svg) become real pictures with download/copy buttons, and
+// <draw>…</draw> in a model answer is turned into a drawing of that request.
+function renderDrawingFigures(container) {
+  if (!container) return 0;
+  return hydrateSVGFigures(container, {
+    toast: showToast,
+    copy: copyText,
+    openInWorkspace: (svg) => openWorkspaceWithCode({
+      html: `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mox drawing</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #111; padding: 24px; }
+    svg { width: min(100%, 640px); height: auto; display: block; }
+  </style>
+</head>
+<body>
+${svg}
+</body>
+</html>`,
+      title: 'Mox drawing'
+    })
+  });
+}
+
+// One place for the text → HTML path, so reopened chats and streamed answers
+// render exactly the same drawings.
+function answerHTML(text) {
+  return renderRich(resolveDrawTags(resolveCalcTags(text)));
+}
+
+function paintBody(body, text) {
+  body.innerHTML = answerHTML(text);
+  renderDrawingFigures(body);
 }
 
 /* ------------------------------------------------------------------ toasts */
@@ -411,6 +579,23 @@ function stem(word) {
   return value;
 }
 
+// Related words the library is likely to use for this question: one level of
+// synonyms from QUERY_ALIASES, e.g. "website" also searches "web", "site", "html".
+// They add recall only — the words the person typed still carry full weight.
+function expandTerms(terms) {
+  const related = new Map();
+  for (const term of terms) {
+    const entries = QUERY_ALIASES[term] || QUERY_ALIASES[stem(term)] || [];
+    for (const entry of entries) {
+      for (const word of tokenize(entry)) {
+        if (terms.includes(word) || related.has(word)) continue;
+        related.set(word, 0.5);
+      }
+    }
+  }
+  return related;
+}
+
 function retrieve(query, limit = MAX_EXCERPTS) {
   const words = tokenize(query);
   const terms = [...new Set(words)];
@@ -445,6 +630,17 @@ function retrieve(query, limit = MAX_EXCERPTS) {
     docTotals.set(key, count);
   }
 
+  // Synonym terms score at half weight (see expandTerms), so they need an idf
+  // of their own rather than being skipped in the loop below.
+  const relatedTerms = expandTerms(terms);
+  for (const [term] of relatedTerms) {
+    if (informativeness.has(term)) continue;
+    let count = 0;
+    const key = stem(term);
+    for (const chunk of chunks) if (chunk.frequencies.has(term) || chunk.stems.has(key)) count++;
+    informativeness.set(term, Math.log(1 + chunks.length / (1 + count)));
+  }
+
   const total = terms.reduce((sum, term) => sum + informativeness.get(term), 0) || 1;
   const scored = [];
   for (const chunk of chunks) {
@@ -465,6 +661,19 @@ function retrieve(query, limit = MAX_EXCERPTS) {
     if (!score) continue;
     // Reward covering the informative parts of the question, not just one word.
     score += 0.7 * coverage;
+    // Related words help only when the passage already matched something real.
+    if (relatedTerms.size) {
+      let related = 0;
+      for (const [term, weight] of relatedTerms) {
+        const frequency = Math.max(
+          chunk.frequencies.get(term) || 0,
+          chunk.stems.get(stem(term)) || 0
+        );
+        if (!frequency) continue;
+        related += (1 + Math.log(frequency)) * (0.35 + (informativeness.get(term) || 0)) * weight;
+      }
+      if (related) score += Math.min(related, score * 0.6);
+    }
     const title = `${chunk.doc.name} ${chunk.doc.path || ''} ${chunk.doc.categoryLabel || ''}`.toLowerCase();
     let titleMatch = false;
     for (const term of terms) {
@@ -780,9 +989,20 @@ function buildMessages(question, excerpts) {
     ...(usesWorkspace ? ['', WORKSPACE_TOOL_INSTRUCTIONS, '', 'FILE CONTENTS:', workspaceContext(5000)] : [])
   ].join('\n');
 
+  // Tone is shared by both branches: warm and human in manner, honest in fact.
+  const voice = [
+    'Sound like a thoughtful friend who happens to know a lot, not a manual: warm, plain, first person, no corporate throat-clearing.',
+    'If someone sounds worried, tired, upset or stuck, name it in one short sentence before you help, then actually help. Never lecture them about their feelings.',
+    'Match their energy: one line in return for a one-line message, more depth only when the problem is hard. Ask a question only when the answer really changes your advice.',
+    'Be encouraging without flattery, and never make someone feel slow for asking.',
+    'Do not keep announcing that you are software, but never claim to be a human being: no body, no childhood, no invented memories, no feelings stated as facts. If asked directly, say what you are in one plain sentence and carry on helping.'
+  ];
+
   const common = [
+    ...voice,
     'For any arithmetic, write <calc>expression</calc> and the app will compute it exactly — never guess a number.',
-    'Code is welcome when it helps: a fenced block with the language name works, and the app can preview it.'
+    'Code is welcome when it helps: a fenced block with the language name works, and the app can preview it.',
+    'To draw something, write <draw>a short description</draw> on its own line; the app turns it into real SVG. Never hand-write SVG markup yourself.'
   ];
 
   const rules = grounded
@@ -919,7 +1139,14 @@ async function chatCompletion(messages, onToken, abortSignal) {
 }
 
 function cleanupAnswer(text) {
-  let value = String(text || '')
+  // Code fences and drawings are kept byte-for-byte: the prose tidy-up below
+  // re-flows sentences and would otherwise break SVG or code.
+  const fences = [];
+  const guarded = String(text || '').replace(/```[\s\S]*?```/g, (block) => {
+    fences.push(block);
+    return `\u0000fence${fences.length - 1}\u0000`;
+  });
+  let value = guarded
     .replace(/<\|im_end\|>[\s\S]*$/g, '')
     .replace(/<\|.*?\|>/g, '')
     .replace(/^\s*(?:assistant|mox|user)\s*[:\-]\s*/i, '')
@@ -953,12 +1180,18 @@ function cleanupAnswer(text) {
     const earlier = value.slice(0, value.length - tail.length);
     if (earlier.includes(tail.trim())) value = earlier.trim();
   }
-  // Stop mid-sentence tails from looking like broken output.
+  // Stop mid-sentence tails from looking like broken output. Code and drawings
+  // held aside above must survive the cut — an answer that ends in a code block
+  // would otherwise lose it to a trailing-comma trim.
   if (value.length > 80 && !/[.!?…"')\]]$/.test(value)) {
     const lastStop = Math.max(value.lastIndexOf('. '), value.lastIndexOf('? '), value.lastIndexOf('! '));
-    if (lastStop > value.length * 0.6) value = value.slice(0, lastStop + 1);
+    if (lastStop > value.length * 0.6) {
+      const kept = value.slice(0, lastStop + 1);
+      const dropped = [...value.slice(lastStop + 1).matchAll(/\u0000fence\d+\u0000/g)].map((match) => match[0]);
+      value = dropped.length ? `${kept}\n\n${dropped.join('\n\n')}` : kept;
+    }
   }
-  return value;
+  return value.replace(/\u0000fence(\d+)\u0000/g, (match, index) => fences[Number(index)] ?? '');
 }
 
 /* -------------------------------------------------------------------- chat */
@@ -1114,7 +1347,7 @@ function renderMessage(role, text, excerpts = [], record = null) {
   body.className = 'message-body';
   // Answers are stored as markdown-ish text, so reopening a chat looks exactly
   // like it did while the model was streaming.
-  if (role === 'assistant' && text) body.innerHTML = renderRich(resolveCalcTags(text));
+  if (role === 'assistant' && text) paintBody(body, text);
   else body.textContent = text;
   row.append(body);
   if (excerpts?.length && text) body.append(citationPills(excerpts, record));
@@ -1366,6 +1599,35 @@ function pureCalculation(question) {
   return { ...result, expression };
 }
 
+/**
+ * Answer a drawing request locally. `ask` adds the user's message first; the
+ * composer path has already done that, the example chips have not.
+ */
+function askDrawing(prompt, { ask = true } = {}) {
+  const question = String(prompt || '').trim();
+  if (!question) return null;
+  if (ask && !generating) {
+    elements.input.value = '';
+    elements.input.style.height = 'auto';
+    addRecord('user', question);
+  }
+  const result = drawingAnswer(question);
+  if (!result.svg) {
+    const record = addRecord('assistant', `${result.text}`);
+    record.drawing = 'menu';
+    showToast('Mox draws shapes, charts and simple scenes — the list above is what works.');
+    announce('Answer ready.');
+    elements.input.focus();
+    return record;
+  }
+  const record = addRecord('assistant', result.text);
+  record.drawing = result.kind;
+  showToast('Drawing ready — save the SVG, copy the code, or open it in the workspace.');
+  announce('Drawing ready.');
+  elements.input.focus();
+  return record;
+}
+
 async function handleSubmit(event) {
   event.preventDefault();
   if (generating) { stopGeneration(); return; }
@@ -1392,6 +1654,14 @@ async function handleSubmit(event) {
     announce('Answer ready.');
     updateComposer();
     elements.input.focus();
+    return;
+  }
+
+  // A request to draw is answered by the drawing engine, not the model: a
+  // 135M model cannot produce trustworthy SVG, but svg.js can produce exact
+  // shapes, charts and scenes. This also works in search-only mode.
+  if (drawingIntent(question)) {
+    askDrawing(question, { ask: false });
     return;
   }
 
@@ -1478,7 +1748,7 @@ function paintAnswer(record, body, text, excerpts, started, { apply = true } = {
   record.excerpts = excerpts;
   record.files = [...new Set([...(record.files || []), ...prepared.paths])];
   record.stats = `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)}s · ${Math.round(tokens / seconds)} tok/s`;
-  body.innerHTML = renderRich(prepared.text);
+  paintBody(body, prepared.text);
   if (excerpts?.length) body.append(citationPills(excerpts, record));
   else body.append(noSourcesNote());
   attachActions(body, record);
@@ -1827,7 +2097,8 @@ function openModal(kind = 'privacy', category = null) {
     privacy: ['A NOTE ON PRIVACY', 'Everything stays with you.'],
     models: ['MODEL LIBRARY', `${(modelManifest?.available || []).length} models available.`],
     settings: ['MODEL & DEVICE', 'A real model, running here.'],
-    library: ['KNOWLEDGE LIBRARY', `${libraryDocuments.length} documents, built in.`]
+    library: ['KNOWLEDGE LIBRARY', `${libraryDocuments.length} documents, built in.`],
+    draw: ['DRAWING', 'Pictures built from geometry.']
   }[kind] || ['A NOTE ON PRIVACY', 'Everything stays with you.'];
 
   elements.modalKicker.textContent = header[0];
@@ -1836,6 +2107,17 @@ function openModal(kind = 'privacy', category = null) {
   if (kind === 'settings' || kind === 'models') {
     if (!chosenModelId) chosenModelId = activeModel()?.id || null;
     elements.modalCopy.innerHTML = modelScreenMarkup();
+  } else if (kind === 'draw') {
+    elements.modalCopy.innerHTML = `
+      <p>Mox draws with <strong>SVG</strong> — shapes, charts and simple scenes built from coordinates, not pixels. Nothing is generated by an image model and nothing leaves this device: the markup is written here, and you can keep it.</p>
+      <div class="draw-chips">${DRAWABLE.map((item) => `<button type="button" class="draw-chip" data-draw-prompt="draw a ${escapeHTML(item)}">${escapeHTML(item)}</button>`).join('')}</div>
+      <h3 class="draw-sub">Charts and diagrams</h3>
+      <div class="draw-chips">${DRAW_EXAMPLES.map((example) => `<button type="button" class="draw-chip" data-draw-prompt="${escapeHTML(example)}">${escapeHTML(example)}</button>`).join('')}</div>
+      <form class="draw-form" id="drawForm">
+        <input id="drawPrompt" class="draw-input" type="text" placeholder="Describe a drawing — e.g. a blue star, bar chart of 3, 8, 5" aria-label="Describe a drawing">
+        <button type="submit" class="draw-send">Draw it</button>
+      </form>
+      <p>Every drawing arrives with <strong>Download</strong>, <strong>PNG</strong>, <strong>Copy</strong> and <strong>Open in workspace</strong>. Say “bar chart of 4, 9, 2” or “flowchart: plan, build, ship” for diagrams, and “draw a red heart” for shapes.</p>`;
   } else if (kind === 'library') {
     const groups = new Map();
     for (const doc of libraryDocuments) {
@@ -1879,6 +2161,25 @@ function openModal(kind = 'privacy', category = null) {
   }
 
   revealModal();
+
+  elements.modalCopy.querySelectorAll('[data-draw-prompt]').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      closeModal();
+      askDrawing(chip.dataset.drawPrompt);
+    });
+  });
+
+  const drawForm = $('#drawForm');
+  if (drawForm) {
+    drawForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const field = $('#drawPrompt');
+      const prompt = field?.value.trim();
+      if (!prompt) { field?.focus(); return; }
+      closeModal();
+      askDrawing(/^(?:draw|sketch|make|create|paint|illustrate)\b/i.test(prompt) ? prompt : `draw ${prompt}`);
+    });
+  }
 
   const upload = $('#modelUpload');
   if (upload) upload.addEventListener('click', () => elements.modelPicker.click());
@@ -2063,6 +2364,7 @@ $('#quickWorkspace').addEventListener('click', () => openWorkspace());
 $('#calculatorButton').addEventListener('click', () => { closeDrawer(); openCalculator(); });
 $('#calcTop').addEventListener('click', () => openCalculator());
 $('#quickCalculator').addEventListener('click', () => openCalculator());
+$('#quickDraw').addEventListener('click', () => { closeDrawer(); openModal('draw'); });
 $('#mobileWorkspace').addEventListener('click', () => openWorkspace());
 $('#mobileCalc').addEventListener('click', () => openCalculator());
 $('#quickAsk').addEventListener('click', () => {
@@ -2266,6 +2568,8 @@ window.__mox = {
   // Calculator API: __mox.calc('sqrt(2)') → {ok, value, text}
   calc: evaluateExpression,
   openCalculator, closeCalculator,
+  // Drawing API: __mox.draw.draw('a red heart') → {svg, caption, kind}
+  draw: svgAPI,
   // Workspace API: files(), read(path), writesFrom(text), apply(writes), open()
   workspace: workspaceApi,
   openWorkspace, openWorkspaceWithCode, finalizeAnswer, codeBundleFromText, pureCalculation,

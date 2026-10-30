@@ -710,6 +710,7 @@ export const WORKSPACE_TOOL_INSTRUCTIONS = [
   '<the complete new file contents>',
   '```',
   'Use the full file, never a fragment or "…". You may write several such blocks.',
+  'When the user names a site to base the design on ("like Hacker News", "a Stripe-style landing page"), follow the matching layout in the website design references — the same bones, never the brand: no logos, no copied text, no imitation of the name.',
   'Only use mox:write when the user asked you to change their workspace; use ordinary code blocks for examples.'
 ].join('\n');
 

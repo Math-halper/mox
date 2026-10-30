@@ -57,7 +57,7 @@ async function boot(tag = '') {
   window.document.querySelectorAll('script').forEach((node) => node.remove());
   window.HTMLTextAreaElement.prototype.focus = noop;
 
-  for (const key of ['window', 'document', 'HTMLElement', 'Node', 'Element', 'Event', 'CustomEvent', 'Blob', 'File', 'FormData', 'URL', 'getComputedStyle', 'requestAnimationFrame', 'fetch']) {
+  for (const key of ['window', 'document', 'HTMLElement', 'Node', 'Element', 'Event', 'CustomEvent', 'Blob', 'File', 'FormData', 'URL', 'getComputedStyle', 'requestAnimationFrame', 'fetch', 'DOMParser', 'XMLSerializer', 'Image', 'KeyboardEvent']) {
     Object.defineProperty(globalThis, key, { value: window[key] ?? globalThis[key], configurable: true, writable: true });
   }
   Object.defineProperty(globalThis, 'navigator', { value: window.navigator, configurable: true });
@@ -290,6 +290,17 @@ check('prompt: ungrounded answers from general knowledge', /own general knowledg
 check('prompt: ungrounded forbids citing sources', /do not mention sources/.test(bareSystem));
 check('prompt: marks the empty source block', bareSystem.includes('no library passage matched this question'));
 
+/* ------------------------------------------------------------ voice + drawings */
+check('prompt: warm, person-first tone', /thoughtful friend/i.test(groundedSystem) && /warm/i.test(bareSystem));
+check('prompt: responds to how someone feels', /worried, tired, upset or stuck/i.test(bareSystem));
+check('prompt: no flattery or shaming', /never make someone feel slow/i.test(groundedSystem));
+check('prompt: never claims to be human', /never claim to be a human being/i.test(groundedSystem) && !/you are (?:a )?human/i.test(groundedSystem));
+check('prompt: does not keep announcing it is software', /do not keep announcing/i.test(bareSystem));
+check('prompt: drawings go through <draw>, not hand-written SVG', /<draw>/i.test(bareSystem) && /Never hand-write SVG/i.test(groundedSystem));
+check('prompt: knowledge base covers the famous website layouts', window.__mox.retrieve('build a page like hacker news').some((hit) => /design references/i.test(hit.doc.name)));
+const namedLayout = window.__mox.buildMessages('make my page look like Hacker News', [])[0].content;
+check('prompt: a named layout is followed as a structure, not a brand', /never the brand/i.test(namedLayout) && /no logos/i.test(namedLayout));
+
 /* ------------------------------------------------------- exact arithmetic */
 check('arithmetic: a plain sum is recognised', window.__mox.pureCalculation('what is 1234 * 5678?')?.value === 7006652);
 check('arithmetic: percentages are recognised', window.__mox.pureCalculation('what is 15% of 80')?.value === 12);
@@ -366,6 +377,41 @@ const calcAnswer = $$('.message.assistant .message-body').at(-1)?.textContent ||
 check('calculator: answers arithmetic without the model', calcAnswer.includes('7006652'), calcAnswer.slice(0, 80));
 check('calculator: says where the number came from', /calculator/i.test(calcAnswer));
 check('calculator: does not claim a missing source', !/no library passage/i.test(calcAnswer));
+
+/* ----------------------------------------------------------- drawings (SVG) */
+window.__mox.resetChat();
+await wait(40);
+$('#messageInput').value = 'draw a red heart';
+$('#messageInput').dispatchEvent(new window.Event('input', { bubbles: true }));
+submit();
+await wait(200);
+const drawBody = $$('.message.assistant .message-body').at(-1);
+const figure = drawBody?.querySelector('.md-figure');
+check('drawing: a request to draw does not go to the model', Boolean(figure));
+check('drawing: renders an inline SVG', Boolean(figure?.querySelector('svg')));
+check('drawing: keeps a viewBox so it scales', Boolean(figure?.querySelector('svg')?.getAttribute('viewBox')));
+check('drawing: has download, PNG, copy and workspace actions',
+  $$('.md-figure-action').length >= 4, $$('.md-figure-action').map((button) => button.textContent).join(', '));
+check('drawing: the caption names the drawing', /heart/i.test(drawBody?.textContent || ''));
+check('drawing: no raw svg block is left in the answer', !drawBody?.querySelector('pre[data-lang="svg"]'));
+
+const chart = window.__mox.draw.draw('bar chart of 4, 9, 2, 7');
+check('drawing: charts use the numbers given', chart.kind === 'bar' && (chart.svg.match(/<rect/g) || []).length >= 5);
+check('drawing: flowcharts build boxes', window.__mox.draw.draw('flowchart: plan -> build -> ship').kind === 'flow');
+check('drawing: impossible subjects are refused honestly', window.__mox.draw.draw('draw a cat').svg === null);
+
+const evil = window.__mox.draw.sanitize('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><script>alert(1)</script><circle cx="5" cy="5" r="4" onclick="alert(2)"/><image href="https://example.com/x.png"/></svg>');
+check('drawing: sanitising strips scripts and event handlers', Boolean(evil) && !/script|onclick|example\.com/i.test(evil), evil || 'null');
+
+window.__mox.resetChat();
+await wait(40);
+$('#quickDraw').dispatchEvent(new window.Event('click', { bubbles: true }));
+await wait(60);
+check('drawing: the Draw something screen opens', !$('#modalBackdrop').hidden && Boolean($('#drawForm')));
+const drawChip = window.document.querySelector('[data-draw-prompt]');
+drawChip?.dispatchEvent(new window.Event('click', { bubbles: true }));
+await wait(120);
+check('drawing: a chip draws immediately', Boolean($$('.message.assistant .md-figure').length));
 
 check('no unhandled errors', errors.length === 0, errors.join('; '));
 

@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "generated": "2026-10-28T21:08:22Z",
+  "generated": "2026-10-30T21:46:35Z",
   "categories": [
     {
       "id": "math",
@@ -169,8 +169,8 @@
       "path": "mox-starter-guide.md",
       "title": "About this workspace",
       "category": "",
-      "bytes": 7243,
-      "words": 1173
+      "bytes": 8597,
+      "words": 1432
     },
     {
       "path": "reading/grammar-and-punctuation.md",
@@ -271,6 +271,27 @@
       "words": 1091
     },
     {
+      "path": "technology/browser-games.md",
+      "title": "Classic browser games: mechanics and real reference implementations",
+      "category": "technology",
+      "bytes": 8545,
+      "words": 1421
+    },
+    {
+      "path": "technology/browser-model-runtimes-and-gguf.md",
+      "title": "Running a language model in the browser: wllama, llama.cpp, and GGUF",
+      "category": "technology",
+      "bytes": 6124,
+      "words": 992
+    },
+    {
+      "path": "technology/code-line-reference.md",
+      "title": "Line-of-code reference: HTML, CSS, JavaScript",
+      "category": "technology",
+      "bytes": 16714,
+      "words": 2446
+    },
+    {
       "path": "technology/css-reference.md",
       "title": "CSS reference \u2014 selectors, every property group, and layout",
       "category": "technology",
@@ -290,6 +311,34 @@
       "category": "technology",
       "bytes": 3950,
       "words": 585
+    },
+    {
+      "path": "technology/data-visualization.md",
+      "title": "Charts, diagrams, and data visualization",
+      "category": "technology",
+      "bytes": 6469,
+      "words": 1167
+    },
+    {
+      "path": "technology/desktop-shell-in-the-browser.md",
+      "title": "Building a desktop environment in the browser",
+      "category": "technology",
+      "bytes": 9001,
+      "words": 1455
+    },
+    {
+      "path": "technology/emulators-and-flash-in-the-browser.md",
+      "title": "Old games in a new browser: Flash, retro consoles, and WebAssembly ports",
+      "category": "technology",
+      "bytes": 5686,
+      "words": 933
+    },
+    {
+      "path": "technology/git-and-github-automation.md",
+      "title": "Git and GitHub automation done safely",
+      "category": "technology",
+      "bytes": 5951,
+      "words": 976
     },
     {
       "path": "technology/how-computers-work.md",
@@ -320,11 +369,32 @@
       "words": 3415
     },
     {
+      "path": "technology/local-ai-agents-and-tools.md",
+      "title": "Running a language model locally, and letting it use tools",
+      "category": "technology",
+      "bytes": 7357,
+      "words": 1137
+    },
+    {
+      "path": "technology/popular-websites.md",
+      "title": "Popular websites and online services",
+      "category": "technology",
+      "bytes": 13253,
+      "words": 2021
+    },
+    {
       "path": "technology/programming-fundamentals.md",
       "title": "Programming fundamentals",
       "category": "technology",
       "bytes": 4258,
       "words": 650
+    },
+    {
+      "path": "technology/small-open-models.md",
+      "title": "Small open language models: SmolLM, Qwen, Llama",
+      "category": "technology",
+      "bytes": 5152,
+      "words": 872
     },
     {
       "path": "technology/software-engineering-practices.md",
@@ -334,11 +404,25 @@
       "words": 915
     },
     {
+      "path": "technology/svg-and-vector-graphics.md",
+      "title": "SVG and vector graphics",
+      "category": "technology",
+      "bytes": 8439,
+      "words": 1397
+    },
+    {
       "path": "technology/web-development-html-css-js.md",
       "title": "Web development: HTML, CSS, and JavaScript in practice",
       "category": "technology",
       "bytes": 5069,
       "words": 792
+    },
+    {
+      "path": "technology/website-design-references.md",
+      "title": "Website design references: how the famous layouts are built",
+      "category": "technology",
+      "bytes": 10051,
+      "words": 1673
     }
   ]
 }
