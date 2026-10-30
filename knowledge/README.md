@@ -22,7 +22,9 @@ Each document is chunked into overlapping passages. On a question, passages are 
 
 ## Credit
 
-Three of the technology documents — `local-ai-agents-and-tools.md`, `git-and-github-automation.md` and `desktop-shell-in-the-browser.md` — were distilled from the architecture of the repository author's own projects, [BOOTMILELIK](https://github.com/Math-halper/BOOTMILELIK) and [math-halper.github.io](https://github.com/Math-halper/math-halper.github.io). Full credit lives in the top-level [`README.md`](../README.md#credits).
+Three of the technology documents — `local-ai-agents-and-tools.md`, `git-and-github-automation.md` and `desktop-shell-in-the-browser.md` — were distilled from the architecture of the repository author's own projects, [BOOTMILELIK](https://github.com/Math-halper/BOOTMILELIK) and [math-halper.github.io](https://github.com/Math-halper/math-halper.github.io). The rest of this library leans on the wider open-source stack the site runs on (wllama, llama.cpp, PDF.js, SmolLM2, Qwen) and on the public documentation of MDN and Wikipedia.
+
+Full credit — including the upstream projects behind those works — lives in the top-level [`README.md`](../README.md#credits).
 
 The documents themselves name neither the projects nor their authors: they describe how such systems work, in general terms, so that retrieval never lands on a page that is really about this site's own family of code. This file is not indexed.
 

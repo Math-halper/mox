@@ -37,16 +37,54 @@ The page, model, and library are served from this repository. Questions, importe
 
 ## Credits
 
-Mox is built and maintained by **[Math-halper](https://github.com/Math-halper)**. Three of the engineering documents in the knowledge library — *Running a language model locally, and letting it use tools*, *Git and GitHub automation done safely*, and *Building a desktop environment in the browser* — were written by distilling the architecture and hard-won lessons of the author's own projects:
+Mox is built and maintained by **[Math-halper](https://github.com/Math-halper)**.
+
+### The projects the reference library was distilled from
+
+Three engineering documents in `knowledge/` — *Running a language model locally, and letting it use tools*, *Git and GitHub automation done safely*, and *Building a desktop environment in the browser* — were written by distilling the architecture and hard-won lessons of the author's other projects:
 
 - **[BOOTMILELIK](https://github.com/Math-halper/BOOTMILELIK)** (MIT) — *Milelik*, a local AI assistant for Linux Mint. A pure-standard-library Python agent that drives a local Qwen2.5-Coder 7B through Ollama, LM Studio or llama.cpp, with 26 tools spanning shell, files, network, desktop apps, media and GitHub, plus a browser front end with a workspace, a code runner and local APIs. The chapter on local models, tool-call dialects, approval gates and testing against fakes comes from this design.
-- **[math-halper.github.io](https://github.com/Math-halper/math-halper.github.io)** (AGPL-3.0) — *proton*, a desktop environment that runs entirely in the browser: window manager, app catalog, virtual file system, terminal, text editor, VLC ported to WebAssembly, a repository-wide search engine, and a Math Helper practice cover page. It is itself a rebranded rebuild of [proton-arcade/mlp](https://github.com/proton-arcade/mlp), and some of its bundled games are vendored from third-party collections — see its own `CREDITS.md` for those. The chapter on browser desktop shells comes from this design.
+- **[math-halper.github.io](https://github.com/Math-halper/math-halper.github.io)** (AGPL-3.0) — *proton*, a desktop environment that runs entirely in the browser: window manager, app catalog, virtual file system, terminal, text editor, VLC ported to WebAssembly, a repository-wide search engine, and a Math Helper practice cover page. The chapter on browser desktop shells comes from this design.
 - **[mox](https://github.com/Math-halper/mox)** — this project.
 
-Those three documents are general technical references. They describe the architecture, not the code, and they deliberately omit project, author and third-party names so that Mox does not surface them as answers — the credit belongs here, in the repository, where a reader can follow it.
+Those three documents are general technical references. They describe architecture, not code, and deliberately omit project, author and third-party names so that retrieval never lands on a page about this site's own family of code. The credit belongs here, in the repository, where a reader can follow it.
 
-Thank you also to the people behind the pieces this site stands on: llama.cpp and wllama, PDF.js, Hugging Face and the SmolLM2 authors, and the Wikimedia and MDN communities whose public documentation is the standard for the web references in `knowledge/`.
+### Built on
+
+Everything below is real, shipped or used by this site — links and licences checked October 2026.
+
+| Project | Licence | How Mox uses it |
+| --- | --- | --- |
+| [wllama](https://github.com/ngxson/wllama) | MIT | The WebAssembly binding that runs llama.cpp inside the browser; vendored in `vendor/wllama/`. |
+| [llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT | The inference engine underneath wllama — the code that actually evaluates tokens. |
+| [PDF.js](https://github.com/mozilla/pdf.js) | Apache-2.0 | Extracts text from imported PDFs; vendored in `vendor/pdfjs/`. |
+| [SmolLM2](https://github.com/huggingface/smollm) | Apache-2.0 | The bundled 135M model, served from `models/` as GGUF. |
+| [Qwen](https://github.com/QwenLM/Qwen2.5-Coder) (Qwen team, Alibaba) | Apache-2.0 | Qwen2.5-Coder 1.5B, Qwen2.5 0.5B/1.5B and Qwen3 4B are offered in the model picker (downloaded from Hugging Face, not bundled). |
+| [Llama 3.2](https://github.com/meta-llama/llama-models) (Meta) | Llama 3.2 Community Licence | Llama 3.2 1B appears in the picker as an optional download. That licence is *not* Apache-2.0 — read it before redistributing the weights. |
+| [jsdom](https://github.com/jsdom/jsdom) | MIT | Development only: boots the real page for `tests/ui-check.mjs`. |
+| [fake-indexeddb](https://github.com/dumbmatter/fakeIndexedDB) | Apache-2.0 | Development only: an in-memory IndexedDB so the tests can open a database. |
+
+The web references in `knowledge/` were checked against [MDN Web Docs](https://developer.mozilla.org/) and [Wikipedia](https://www.wikipedia.org/), the two public references every web developer leans on. Their text is not copied; the debt is to the standard they set.
+
+### Upstream of the browser-desktop project
+
+None of this code is in Mox. It is credited because one chapter was distilled from a project that builds on it, and that chain deserves to be visible:
+
+- [proton-arcade/mlp](https://github.com/proton-arcade/mlp) — the original desktop shell that *proton* is rebuilt from.
+- [Gams-Offline/Gams](https://github.com/Gams-Offline/Gams) — the offline games mirror that supplies many of its bundled games.
+- [Ruffle](https://github.com/ruffle-rs/ruffle) — the Flash Player emulator in Rust/WebAssembly those games run on.
+- [webretro](https://github.com/BinBashBanana/webretro) — RetroArch in the browser, for the emulator app.
+- [VLC](https://github.com/videolan/vlc) — libvlc, ported to WebAssembly for the media player app.
+- [proton-arcade](https://github.com/proton-arcade) — the account behind several of the vendored game builds (*gdweb*, *evo*, *AmplerLauncher*).
+
+### A licensing note
+
+Several of the upstream repositories above — including `proton-arcade/mlp` and the vendored game collections — declare **no licence file** at all, and a few of the game builds are fan ports or mirrors of commercial games. That is a real constraint on redistributing them, and worth knowing before publishing a fork. Mox itself also has no licence file yet; add one if you want others to reuse this code.
 
 ## Licenses
 
-The bundled model is Apache-2.0 (`HuggingFaceTB/SmolLM2-135M-Instruct`). wllama is MIT and embeds llama.cpp (MIT). PDF.js is Apache-2.0. Knowledge documents are original text written for this project; three of them distil the architecture of the projects credited above and carry no code from them.
+- **Bundled model** — Apache-2.0 (`HuggingFaceTB/SmolLM2-135M-Instruct`).
+- **wllama** — MIT; it embeds **llama.cpp**, also MIT.
+- **PDF.js** — Apache-2.0.
+- **Optional models** — Qwen models are Apache-2.0; Llama 3.2 1B is under the Llama 3.2 Community Licence and is not bundled.
+- **Knowledge documents** — original text written for this project; three of them distil the architecture of the projects credited above and carry no code from them.
