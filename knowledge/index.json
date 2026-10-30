@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "generated": "2026-10-30T21:39:56Z",
+  "generated": "2026-10-30T21:44:32Z",
   "categories": [
     {
       "id": "math",
@@ -169,8 +169,8 @@
       "path": "mox-starter-guide.md",
       "title": "About this workspace",
       "category": "",
-      "bytes": 8526,
-      "words": 1423
+      "bytes": 8570,
+      "words": 1429
     },
     {
       "path": "reading/grammar-and-punctuation.md",
@@ -409,6 +409,13 @@
       "category": "technology",
       "bytes": 5069,
       "words": 792
+    },
+    {
+      "path": "technology/website-design-references.md",
+      "title": "Website design references: how the famous layouts are built",
+      "category": "technology",
+      "bytes": 10051,
+      "words": 1673
     }
   ]
 }

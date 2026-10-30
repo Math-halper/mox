@@ -5,7 +5,7 @@ Mox is a private AI workspace that runs a real language model inside the visitor
 ## What the project contains
 
 - **A browser-based language model.** `models/smollm2-135m-instruct-q4_1.gguf` (94 MB, Apache-2.0) is served by the site itself and executed by llama.cpp compiled to WebAssembly through the `wllama` runtime in `vendor/wllama/`. The weights never leave the site, and visitors can upload their own `.gguf` files, which are stored in the browser's IndexedDB and appear in the same model picker.
-- **A knowledge library.** `knowledge/` holds 53 documents (~52k words) covering math, reading and writing, technology (including HTML, CSS, JavaScript, API, SVG and data-visualisation references, guides to popular websites, local AI agents, browser model runtimes and GGUF, small open models, classic browser games, emulators and Flash, Git and GitHub automation, and browser desktop shells), science, humanities, and life skills. Each document is indexed in the browser, and answers cite the passages they use. Question words are expanded with a synonym table ("website" also searches "web", "site", "html"), so short questions find the right passage more often.
+- **A knowledge library.** `knowledge/` holds 54 documents (~53k words) covering math, reading and writing, technology (including HTML, CSS, JavaScript, API, SVG and data-visualisation references, guides to popular websites, local AI agents, browser model runtimes and GGUF, small open models, classic browser games, emulators and Flash, website design references, Git and GitHub automation, and browser desktop shells), science, humanities, and life skills. Each document is indexed in the browser, and answers cite the passages they use. Question words are expanded with a synonym table ("website" also searches "web", "site", "html"), so short questions find the right passage more often.
 - **Drawings.** Ask for a shape, a chart, a flowchart or a simple scene and Mox builds a real SVG from geometry — no image model involved. Every drawing can be downloaded as `.svg` or `.png`, copied, or opened in the workspace.
 - **A code workspace.** A file tree, editor with line numbers, live sandboxed preview, console, and AI panel. Mox can read workspace files and rewrite them from chat using `mox:write` blocks, with Apply/Undo control.
 - **A calculator.** A safe expression engine (no `eval`) with trigonometry, logarithms, statistics, combinatorics, percentages, unit conversion, and `<calc>…</calc>` tags that make arithmetic in answers exact.
@@ -97,6 +97,12 @@ The documents *Classic browser games* and *Old games in a new browser* name real
 | [BinBashBanana/webretro](https://github.com/BinBashBanana/webretro) | MIT | RetroArch in the browser with a core picker |
 
 None of this code is in Mox; the documents describe the mechanics, and the licences above are what apply if anyone reuses them. Note that the GPL-3.0 projects (Pac-Man, EmulatorJS) carry obligations that the MIT ones do not, and that no emulator licence grants any right to the games people run on it — see the table at the end of the emulators document.
+
+### Design references
+
+One document, *Website design references*, describes the anatomy of a dozen recognisable layouts — a news list, classifieds, an encyclopedia article, documentation, a repository page, a SaaS landing page, a marketplace grid, a product page, a community feed, a media grid, a search page, a modern app shell — so that "build it like X" produces the same *bones* rather than a copy.
+
+No code, copy, imagery or assets from any of those sites appear in this repository; the descriptions are original, written from how the layouts work. The document ends with the rule written into the workspace prompt: borrow the structure, never the logo, the name or the trademark. It credits [MDN](https://developer.mozilla.org/), [web.dev](https://web.dev/), [WebAIM](https://webaim.org/) and [W3C WAI](https://www.w3.org/WAI/) for the accessibility and layout guidance those patterns depend on.
 
 ### A licensing note
 

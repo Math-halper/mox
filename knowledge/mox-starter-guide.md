@@ -56,13 +56,13 @@ The first visit transfers the 94 MB model file; after that the browser serves it
 
 ## The knowledge library
 
-`knowledge/` holds 53 documents — about 52k words — covering mathematics, reading and writing, technology (including full HTML, CSS, JavaScript and SVG references, guides to popular websites, local AI agents, browser model runtimes and GGUF, small open models, classic browser games, emulators and Flash, Git and GitHub automation, browser desktop shells, and a data-visualisation primer), science, humanities, and life skills. Each file is fetched by the page, split into overlapping passages, and scored against every question in the browser. The best passages are placed in the model's prompt as sources, and their titles appear under the answer.
+`knowledge/` holds 54 documents — about 53k words — covering mathematics, reading and writing, technology (including full HTML, CSS, JavaScript and SVG references, guides to popular websites, local AI agents, browser model runtimes and GGUF, small open models, classic browser games, emulators and Flash, website design references, Git and GitHub automation, browser desktop shells, and a data-visualisation primer), science, humanities, and life skills. Each file is fetched by the page, split into overlapping passages, and scored against every question in the browser. The best passages are placed in the model's prompt as sources, and their titles appear under the answer.
 
 Imported material can be added with **Add a folder** or **Add files**. Imported text is stored in the browser's IndexedDB and can be removed from the sidebar.
 
 ## When Mox has sources, and when it doesn't
 
-If a question matches something in the library, Mox puts those passages in front of the model, cites them as `[1]`, `[2]`, and links them under the answer so the exact text can be read. If nothing matches — a greeting, simple arithmetic, something outside the 53 documents — Mox answers from the model's own knowledge and says so in one line under the reply. It should never claim it has "no sources" or refuse a question just because the library is silent.
+If a question matches something in the library, Mox puts those passages in front of the model, cites them as `[1]`, `[2]`, and links them under the answer so the exact text can be read. If nothing matches — a greeting, simple arithmetic, something outside the 54 documents — Mox answers from the model's own knowledge and says so in one line under the reply. It should never claim it has "no sources" or refuse a question just because the library is silent.
 
 When the library matches only partly, the answer uses the passages and then fills in. Treat Mox as a fast study aid, not an authority: check anything that matters against the cited document or another source.
 

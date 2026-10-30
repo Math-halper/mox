@@ -297,6 +297,9 @@ check('prompt: no flattery or shaming', /never make someone feel slow/i.test(gro
 check('prompt: never claims to be human', /never claim to be a human being/i.test(groundedSystem) && !/you are (?:a )?human/i.test(groundedSystem));
 check('prompt: does not keep announcing it is software', /do not keep announcing/i.test(bareSystem));
 check('prompt: drawings go through <draw>, not hand-written SVG', /<draw>/i.test(bareSystem) && /Never hand-write SVG/i.test(groundedSystem));
+check('prompt: knowledge base covers the famous website layouts', window.__mox.retrieve('build a page like hacker news').some((hit) => /design references/i.test(hit.doc.name)));
+const namedLayout = window.__mox.buildMessages('make my page look like Hacker News', [])[0].content;
+check('prompt: a named layout is followed as a structure, not a brand', /never the brand/i.test(namedLayout) && /no logos/i.test(namedLayout));
 
 /* ------------------------------------------------------- exact arithmetic */
 check('arithmetic: a plain sum is recognised', window.__mox.pureCalculation('what is 1234 * 5678?')?.value === 7006652);
