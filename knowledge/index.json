@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "generated": "2026-10-30T21:44:32Z",
+  "generated": "2026-10-30T21:46:35Z",
   "categories": [
     {
       "id": "math",
@@ -169,8 +169,8 @@
       "path": "mox-starter-guide.md",
       "title": "About this workspace",
       "category": "",
-      "bytes": 8570,
-      "words": 1429
+      "bytes": 8597,
+      "words": 1432
     },
     {
       "path": "reading/grammar-and-punctuation.md",
@@ -283,6 +283,13 @@
       "category": "technology",
       "bytes": 6124,
       "words": 992
+    },
+    {
+      "path": "technology/code-line-reference.md",
+      "title": "Line-of-code reference: HTML, CSS, JavaScript",
+      "category": "technology",
+      "bytes": 16714,
+      "words": 2446
     },
     {
       "path": "technology/css-reference.md",
