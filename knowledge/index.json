@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "generated": "2026-10-30T21:23:40Z",
+  "generated": "2026-10-30T21:35:06Z",
   "categories": [
     {
       "id": "math",
@@ -169,8 +169,8 @@
       "path": "mox-starter-guide.md",
       "title": "About this workspace",
       "category": "",
-      "bytes": 8407,
-      "words": 1406
+      "bytes": 8474,
+      "words": 1415
     },
     {
       "path": "reading/grammar-and-punctuation.md",
@@ -271,6 +271,13 @@
       "words": 1091
     },
     {
+      "path": "technology/browser-model-runtimes-and-gguf.md",
+      "title": "Running a language model in the browser: wllama, llama.cpp, and GGUF",
+      "category": "technology",
+      "bytes": 6124,
+      "words": 992
+    },
+    {
       "path": "technology/css-reference.md",
       "title": "CSS reference \u2014 selectors, every property group, and layout",
       "category": "technology",
@@ -360,6 +367,13 @@
       "category": "technology",
       "bytes": 4258,
       "words": 650
+    },
+    {
+      "path": "technology/small-open-models.md",
+      "title": "Small open language models: SmolLM, Qwen, Llama",
+      "category": "technology",
+      "bytes": 5152,
+      "words": 872
     },
     {
       "path": "technology/software-engineering-practices.md",
