@@ -4,13 +4,13 @@ This folder is the reference library Mox reads. Every `.md`, `.txt`, `.pdf`, `.c
 
 ## Contents
 
-51 documents, roughly 49k words:
+53 documents, roughly 52k words:
 
 | Folder | Subject | Documents |
 | --- | --- | ---: |
 | `math/` | Arithmetic, algebra, geometry, trigonometry, calculus, probability, statistics, formula reference | 7 |
 | `reading/` | Comprehension, grammar, punctuation, writing, style, vocabulary, literature, rhetoric | 6 |
-| `technology/` | Computers, the internet, the web, popular websites, programming, AI, local agents and tool use, browser runtimes and GGUF, small open models, security, data and SQL, software engineering, Git and GitHub automation, browser desktops, charts, SVG, full HTML/CSS/JavaScript/API references | 20 |
+| `technology/` | Computers, the internet, the web, popular websites, programming, AI, local agents and tool use, browser runtimes and GGUF, small open models, browser games, emulators and Flash, security, data and SQL, software engineering, Git and GitHub automation, browser desktops, charts, SVG, full HTML/CSS/JavaScript/API references | 22 |
 | `science/` | Physics, chemistry, biology and Earth science, astronomy and space | 6 |
 | `humanities/` | World history, geography and cultures, philosophy, modern history | 5 |
 | `life/` | Health, personal finance, study skills, careers, law and civics, cooking and food safety | 6 |

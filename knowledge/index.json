@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "generated": "2026-10-30T21:35:06Z",
+  "generated": "2026-10-30T21:39:56Z",
   "categories": [
     {
       "id": "math",
@@ -169,8 +169,8 @@
       "path": "mox-starter-guide.md",
       "title": "About this workspace",
       "category": "",
-      "bytes": 8474,
-      "words": 1415
+      "bytes": 8526,
+      "words": 1423
     },
     {
       "path": "reading/grammar-and-punctuation.md",
@@ -271,6 +271,13 @@
       "words": 1091
     },
     {
+      "path": "technology/browser-games.md",
+      "title": "Classic browser games: mechanics and real reference implementations",
+      "category": "technology",
+      "bytes": 8545,
+      "words": 1421
+    },
+    {
       "path": "technology/browser-model-runtimes-and-gguf.md",
       "title": "Running a language model in the browser: wllama, llama.cpp, and GGUF",
       "category": "technology",
@@ -311,6 +318,13 @@
       "category": "technology",
       "bytes": 9001,
       "words": 1455
+    },
+    {
+      "path": "technology/emulators-and-flash-in-the-browser.md",
+      "title": "Old games in a new browser: Flash, retro consoles, and WebAssembly ports",
+      "category": "technology",
+      "bytes": 5686,
+      "words": 933
     },
     {
       "path": "technology/git-and-github-automation.md",

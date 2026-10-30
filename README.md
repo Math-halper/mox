@@ -5,7 +5,7 @@ Mox is a private AI workspace that runs a real language model inside the visitor
 ## What the project contains
 
 - **A browser-based language model.** `models/smollm2-135m-instruct-q4_1.gguf` (94 MB, Apache-2.0) is served by the site itself and executed by llama.cpp compiled to WebAssembly through the `wllama` runtime in `vendor/wllama/`. The weights never leave the site, and visitors can upload their own `.gguf` files, which are stored in the browser's IndexedDB and appear in the same model picker.
-- **A knowledge library.** `knowledge/` holds 51 documents (~49k words) covering math, reading and writing, technology (including HTML, CSS, JavaScript, API, SVG and data-visualisation references, guides to popular websites, local AI agents, browser model runtimes and GGUF, small open models, Git and GitHub automation, and browser desktop shells), science, humanities, and life skills. Each document is indexed in the browser, and answers cite the passages they use. Question words are expanded with a synonym table ("website" also searches "web", "site", "html"), so short questions find the right passage more often.
+- **A knowledge library.** `knowledge/` holds 53 documents (~52k words) covering math, reading and writing, technology (including HTML, CSS, JavaScript, API, SVG and data-visualisation references, guides to popular websites, local AI agents, browser model runtimes and GGUF, small open models, classic browser games, emulators and Flash, Git and GitHub automation, and browser desktop shells), science, humanities, and life skills. Each document is indexed in the browser, and answers cite the passages they use. Question words are expanded with a synonym table ("website" also searches "web", "site", "html"), so short questions find the right passage more often.
 - **Drawings.** Ask for a shape, a chart, a flowchart or a simple scene and Mox builds a real SVG from geometry — no image model involved. Every drawing can be downloaded as `.svg` or `.png`, copied, or opened in the workspace.
 - **A code workspace.** A file tree, editor with line numbers, live sandboxed preview, console, and AI panel. Mox can read workspace files and rewrite them from chat using `mox:write` blocks, with Apply/Undo control.
 - **A calculator.** A safe expression engine (no `eval`) with trigonometry, logarithms, statistics, combinatorics, percentages, unit conversion, and `<calc>…</calc>` tags that make arithmetic in answers exact.
@@ -76,6 +76,27 @@ None of this code is in Mox. It is credited because one chapter was distilled fr
 - [webretro](https://github.com/BinBashBanana/webretro) — RetroArch in the browser, for the emulator app.
 - [VLC](https://github.com/videolan/vlc) — libvlc, ported to WebAssembly for the media player app.
 - [proton-arcade](https://github.com/proton-arcade) — the account behind several of the vendored game builds (*gdweb*, *evo*, *AmplerLauncher*).
+
+### Games and game runtimes the library points at
+
+The documents *Classic browser games* and *Old games in a new browser* name real implementations so that a question about a game has something concrete to land on. These are the projects they reference (checked October 2026):
+
+| Project | Licence | What it is |
+| --- | --- | --- |
+| [gabrielecirulli/2048](https://github.com/gabrielecirulli/2048) | MIT | The original 2048 — grid slide-and-merge |
+| [jakesgordon/javascript-tetris](https://github.com/jakesgordon/javascript-tetris) | MIT | Compact Tetris: rotation, lock delay, line clears |
+| [dom96/snake](https://github.com/dom96/snake) | MIT | The grid game in a few hundred lines |
+| [soundanalogous/Breakout](https://github.com/soundanalogous/Breakout) | MIT | Canvas Breakout: paddle angle, brick collisions |
+| [nebez/floppybird](https://github.com/nebez/floppybird) | Apache-2.0 | Flappy Bird clone — one velocity, tuned constants |
+| [wayou/t-rex-runner](https://github.com/wayou/t-rex-runner) | BSD-3-Clause | The Chrome dino, extracted from Chromium |
+| [luciopanepinto/pacman](https://github.com/luciopanepinto/pacman) | GPL-3.0 | Pac-Man: tile maze, ghost targeting, scatter/chase |
+| [Hextris/hextris](https://github.com/Hextris/hextris) | Licence file only (check before reuse) | Hexagonal Tetris-like puzzle |
+| [pshenok/server-survival](https://github.com/pshenok/server-survival) | MIT | Tower defence that teaches cloud architecture |
+| [ruffle-rs/ruffle](https://github.com/ruffle-rs/ruffle) | MIT / Apache-2.0 (dual) | Flash player reimplemented in Rust + WebAssembly |
+| [EmulatorJS/EmulatorJS](https://github.com/EmulatorJS/EmulatorJS) | GPL-3.0 | RetroArch front end for the browser — consoles, saves, gamepads |
+| [BinBashBanana/webretro](https://github.com/BinBashBanana/webretro) | MIT | RetroArch in the browser with a core picker |
+
+None of this code is in Mox; the documents describe the mechanics, and the licences above are what apply if anyone reuses them. Note that the GPL-3.0 projects (Pac-Man, EmulatorJS) carry obligations that the MIT ones do not, and that no emulator licence grants any right to the games people run on it — see the table at the end of the emulators document.
 
 ### A licensing note
 
